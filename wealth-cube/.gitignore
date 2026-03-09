@@ -1,0 +1,18 @@
+# Build artifacts
+bin/
+obj/
+
+# Tabular local workspace files
+*.settings
+*.layout
+
+# Visual Studio files
+.vs/
+*.user
+
+# Deployment artifacts
+*.asdatabase
+*.xmla
+
+# Logs
+*.log

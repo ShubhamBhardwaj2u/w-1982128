@@ -1,0 +1,17 @@
+{
+  "name": "Profit",
+  "dataType": "double",
+  "sourceColumn": "Profit",
+  "lineageTag": "89397dbb-35bc-4399-be6a-e3ee5c3958f0",
+  "summarizeBy": "sum",
+  "annotations": [
+    {
+      "name": "SummarizationSetBy",
+      "value": "Automatic"
+    },
+    {
+      "name": "PBI_FormatHint",
+      "value": "{\"isGeneralNumber\":true}"
+    }
+  ]
+}

@@ -1,0 +1,612 @@
+﻿{
+  "name": "Wealth",
+  "compatibilityLevel": 1600,
+  "model": {
+    "culture": "en-US",
+    "discourageImplicitMeasures": true,
+    "dataSources": [
+      {
+        "name": "EDW_WEALTH_DATAMART",
+        "connectionString": "provider=MSOLEDBSQL.1;integrated security=SSPI;persist security info=False;initial catalog=EDW_WEALTH_DATAMART;data source=UMDA001DWDDLS1;trust server certificate=True",
+        "impersonationMode": "impersonateServiceAccount",
+        "annotations": [
+          {
+            "name": "ConnectionEditUISource",
+            "value": "SqlServer"
+          }
+        ]
+      }
+    ],
+    "tables": [
+      {
+        "name": "Dim_Date",
+        "columns": [
+          {
+            "name": "DateKey",
+            "dataType": "int64",
+            "sourceColumn": "DateKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "Date",
+            "dataType": "dateTime",
+            "sourceColumn": "Date",
+            "sourceProviderType": "Date"
+          },
+          {
+            "name": "Year",
+            "dataType": "int64",
+            "sourceColumn": "Year",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "Quarter",
+            "dataType": "string",
+            "sourceColumn": "Quarter",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "Month",
+            "dataType": "string",
+            "sourceColumn": "Month",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "Day",
+            "dataType": "int64",
+            "sourceColumn": "Day",
+            "sourceProviderType": "Integer"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Dim_Date",
+            "source": {
+              "query": "SELECT DateKey, Date, Year, Quarter, Month, Day FROM dbo.DimDate",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      },
+      {
+        "name": "Dim_BusinessUnit",
+        "columns": [
+          {
+            "name": "BusinessUnitKey",
+            "dataType": "int64",
+            "sourceColumn": "BusinessUnitKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "BusinessUnitAbbreviation",
+            "dataType": "string",
+            "sourceColumn": "BusinessUnitAbbreviation",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "BusinessUnitName",
+            "dataType": "string",
+            "sourceColumn": "BusinessUnitName",
+            "sourceProviderType": "WChar"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Dim_BusinessUnit",
+            "source": {
+              "query": "SELECT BusinessUnitKey, BusinessUnitAbbreviation, BusinessUnitName FROM dbo.DimBusinessUnit",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      },
+      {
+        "name": "Dim_Account",
+        "columns": [
+          {
+            "name": "AccountKey",
+            "dataType": "int64",
+            "sourceColumn": "AccountKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "AccountNumber",
+            "dataType": "string",
+            "sourceColumn": "AccountNumber",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "AccountName",
+            "dataType": "string",
+            "sourceColumn": "AccountName",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "OpenDate",
+            "dataType": "dateTime",
+            "sourceColumn": "OpenDate",
+            "sourceProviderType": "Date"
+          },
+          {
+            "name": "CloseDate",
+            "dataType": "dateTime",
+            "sourceColumn": "CloseDate",
+            "sourceProviderType": "Date"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Dim_Account",
+            "source": {
+              "query": "SELECT AccountKey, AccountNumber, AccountName, OpenDate, CloseDate FROM dbo.DimAccount",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      },
+      {
+        "name": "Dim_Security",
+        "columns": [
+          {
+            "name": "SecurityKey",
+            "dataType": "int64",
+            "sourceColumn": "SecurityKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "CUSIP",
+            "dataType": "string",
+            "sourceColumn": "CUSIP",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "SecurityName",
+            "dataType": "string",
+            "sourceColumn": "SecurityName",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "SecurityType",
+            "dataType": "string",
+            "sourceColumn": "SecurityType",
+            "sourceProviderType": "WChar"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Dim_Security",
+            "source": {
+              "query": "SELECT SecurityKey, CUSIP, SecurityName, SecurityType FROM dbo.DimSecurity",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      },
+      {
+        "name": "Dim_RelationshipRep",
+        "columns": [
+          {
+            "name": "RepKey",
+            "dataType": "int64",
+            "sourceColumn": "RepKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "RepCode",
+            "dataType": "string",
+            "sourceColumn": "RepCode",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "RepName",
+            "dataType": "string",
+            "sourceColumn": "RepName",
+            "sourceProviderType": "WChar"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Dim_RelationshipRep",
+            "source": {
+              "query": "SELECT RepKey, RepCode, RepName FROM dbo.DimRelationshipRep",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      },
+      {
+        "name": "Dim_InvestmentRep",
+        "columns": [
+          {
+            "name": "RepKey",
+            "dataType": "int64",
+            "sourceColumn": "RepKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "RepCode",
+            "dataType": "string",
+            "sourceColumn": "RepCode",
+            "sourceProviderType": "WChar"
+          },
+          {
+            "name": "RepName",
+            "dataType": "string",
+            "sourceColumn": "RepName",
+            "sourceProviderType": "WChar"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Dim_InvestmentRep",
+            "source": {
+              "query": "SELECT RepKey, RepCode, RepName FROM dbo.DimInvestmentRep",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      },
+      {
+        "name": "Fact_Position",
+        "columns": [
+          {
+            "name": "BusinessUnitKey",
+            "dataType": "int64",
+            "sourceColumn": "BusinessUnitKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "PositionDateKey",
+            "dataType": "int64",
+            "sourceColumn": "PositionDateKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "AccountKey",
+            "dataType": "int64",
+            "sourceColumn": "AccountKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "SecurityKey",
+            "dataType": "int64",
+            "sourceColumn": "SecurityKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "RelationshipRepKey",
+            "dataType": "int64",
+            "sourceColumn": "RelationshipRepKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "InvestmentRepKey",
+            "dataType": "int64",
+            "sourceColumn": "InvestmentRepKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "MarketQuantity",
+            "dataType": "double",
+            "sourceColumn": "MarketQuantity",
+            "sourceProviderType": "Decimal"
+          },
+          {
+            "name": "MarketPrice",
+            "dataType": "double",
+            "sourceColumn": "MarketPrice",
+            "sourceProviderType": "Decimal"
+          },
+          {
+            "name": "MarketValue",
+            "dataType": "decimal",
+            "sourceColumn": "MarketValue",
+            "formatString": "\\$#,0.00;(\\$#,0.00);\\$#,0.00",
+            "sourceProviderType": "Decimal",
+            "annotations": [
+              {
+                "name": "Format",
+                "value": "<Format Format=\"Currency\" Accuracy=\"2\" ThousandSeparator=\"True\"><Currency LCID=\"1033\" DisplayName=\"$ English (United States)\" Symbol=\"$\" PositivePattern=\"0\" NegativePattern=\"0\"/></Format>"
+              }
+            ]
+          },
+          {
+            "name": "OriginalFaceValue",
+            "dataType": "double",
+            "sourceColumn": "OriginalFaceValue",
+            "sourceProviderType": "Decimal"
+          }
+        ],
+        "calculatedColumns": [
+          {
+            "name": "AccountNumber",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Dim_Account[AccountNumber])"
+          },
+          {
+            "name": "Relationship Rep Code",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Dim_RelationshipRep[RepCode])"
+          },
+          {
+            "name": "Investment Rep Code",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Dim_InvestmentRep[RepCode])"
+          },
+          {
+            "name": "CUSIP",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Dim_Security[CUSIP])"
+          },
+          {
+            "name": "AccountOpenDate",
+            "dataType": "dateTime",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Dim_Account[OpenDate])",
+            "formatString": "Short Date",
+            "annotations": [
+              {
+                "name": "Format",
+                "value": "<Format Format=\"DateTimeShortDatePattern\" />"
+              }
+            ]
+          },
+          {
+            "name": "AccountCloseDate",
+            "dataType": "dateTime",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Dim_Account[CloseDate])"
+          },
+          {
+            "name": "BusinessUnitAbbreviation",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Dim_BusinessUnit[BusinessUnitAbbreviation])"
+          }
+        ],
+        "measures": [
+          {
+            "name": "Total Market Value",
+            "expression": "SUM(Fact_Position[MarketValue])",
+            "formatString": "\\$#,0.00;(\\$#,0.00);\\$#,0.00",
+            "annotations": [
+              {
+                "name": "Format",
+                "value": "<Format Format=\"Currency\" Accuracy=\"2\" ThousandSeparator=\"True\"><Currency LCID=\"1033\" DisplayName=\"$ English (United States)\" Symbol=\"$\" PositivePattern=\"0\" NegativePattern=\"0\"/></Format>"
+              }
+            ]
+          },
+          {
+            "name": "Total Market Quantity",
+            "expression": "SUM(Fact_Position[MarketQuantity])",
+            "formatString": "#,0.00;(#,0.00);#,0.00"
+          },
+          {
+            "name": "Average Market Price",
+            "expression": "AVERAGE(Fact_Position[MarketPrice])",
+            "formatString": "\\$#,0.00;(\\$#,0.00);\\$#,0.00",
+            "annotations": [
+              {
+                "name": "Format",
+                "value": "<Format Format=\"Currency\" Accuracy=\"2\" ThousandSeparator=\"True\"><Currency LCID=\"1033\" DisplayName=\"$ English (United States)\" Symbol=\"$\" PositivePattern=\"0\" NegativePattern=\"0\"/></Format>"
+              }
+            ]
+          },
+          {
+            "name": "Position Count",
+            "expression": "COUNTROWS(Fact_Position)",
+            "formatString": "#,0;(#,0);#,0"
+          },
+          {
+            "name": "Total Original Face Value",
+            "expression": "SUM(Fact_Position[OriginalFaceValue])",
+            "formatString": "\\$#,0.00;(\\$#,0.00);\\$#,0.00",
+            "annotations": [
+              {
+                "name": "Format",
+                "value": "<Format Format=\"Currency\" Accuracy=\"2\" ThousandSeparator=\"True\"><Currency LCID=\"1033\" DisplayName=\"$ English (United States)\" Symbol=\"$\" PositivePattern=\"0\" NegativePattern=\"0\"/></Format>"
+              }
+            ]
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Fact_Position",
+            "source": {
+              "query": "SELECT * FROM dbo.Fact_Position",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "name": "Fact_Position_Dim_Date",
+        "fromTable": "Fact_Position",
+        "fromColumn": "PositionDateKey",
+        "toTable": "Dim_Date",
+        "toColumn": "DateKey",
+        "isActive": true,
+        "crossFilteringBehavior": "bothDirections"
+      },
+      {
+        "name": "Fact_Position_Dim_BusinessUnit",
+        "fromTable": "Fact_Position",
+        "fromColumn": "BusinessUnitKey",
+        "toTable": "Dim_BusinessUnit",
+        "toColumn": "BusinessUnitKey",
+        "isActive": true,
+        "crossFilteringBehavior": "bothDirections"
+      },
+      {
+        "name": "Fact_Position_Dim_Account",
+        "fromTable": "Fact_Position",
+        "fromColumn": "AccountKey",
+        "toTable": "Dim_Account",
+        "toColumn": "AccountKey",
+        "isActive": true,
+        "crossFilteringBehavior": "bothDirections"
+      },
+      {
+        "name": "Fact_Position_Dim_Security",
+        "fromTable": "Fact_Position",
+        "fromColumn": "SecurityKey",
+        "toTable": "Dim_Security",
+        "toColumn": "SecurityKey",
+        "isActive": true,
+        "crossFilteringBehavior": "bothDirections"
+      },
+      {
+        "name": "Fact_Position_Dim_RelationshipRep",
+        "fromTable": "Fact_Position",
+        "fromColumn": "RelationshipRepKey",
+        "toTable": "Dim_RelationshipRep",
+        "toColumn": "RepKey",
+        "isActive": true,
+        "crossFilteringBehavior": "bothDirections"
+      },
+      {
+        "name": "Fact_Position_Dim_InvestmentRep",
+        "fromTable": "Fact_Position",
+        "fromColumn": "InvestmentRepKey",
+        "toTable": "Dim_InvestmentRep",
+        "toColumn": "RepKey",
+        "isActive": true,
+        "crossFilteringBehavior": "bothDirections"
+      }
+    ],
+    "roles": [
+      {
+        "name": "Read Access",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\DM-BAR-Reporting",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-65321"
+          },
+          {
+            "memberName": "WINTRUST\\DM_PBI_ProdMgmt",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-70325"
+          },
+          {
+            "memberName": "WINTRUST\\BU_Wealth_GLA_PortfolioManagers",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-77567"
+          },
+          {
+            "memberName": "WINTRUST\\DM_DWBI",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-66341"
+          },
+          {
+            "memberName": "WINTRUST\\DM_SSRS_PBI_TFS_ReleaseManager",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-68195"
+          },
+          {
+            "memberName": "WINTRUST\\BU_Wealth",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-76834"
+          },
+          {
+            "memberName": "SALES\\BU_Wealth_WTI_FinancialAdvisors",
+            "memberId": "S-1-5-21-55146163-1185641427-732247886-16455"
+          },
+          {
+            "memberName": "WINTRUST\\DM_DG_Reporting",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-82258"
+          }
+        ]
+      },
+      {
+        "name": "Read_Process Access",
+        "modelPermission": "readRefresh",
+        "members": [
+          {
+            "memberName": "WINTRUST\\DB_BAR_SVC_PROD_SSASReadProcess",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-69453"
+          },
+          {
+            "memberName": "WINTRUST\\SVC_DM_ETL_UAT",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-62465"
+          },
+          {
+            "memberName": "WINTRUST\\SVC_DM_ETL_DEV",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-62467"
+          }
+        ]
+      },
+      {
+        "name": "CTC",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\SG-WT-ENT-PRD-PBI-U-BU-WEALTH-CTC-SUPERUSERS",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-91469"
+          }
+        ],
+        "tablePermissions": [
+          {
+            "name": "Dim_BusinessUnit",
+            "filterExpression": "Dim_BusinessUnit[BusinessUnitAbbreviation] = \"CTC\""
+          }
+        ]
+      },
+      {
+        "name": "WTI",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\BU_Wealth_WTI_SuperUsers",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-86105"
+          }
+        ],
+        "tablePermissions": [
+          {
+            "name": "Dim_BusinessUnit",
+            "filterExpression": "Dim_BusinessUnit[BusinessUnitAbbreviation] = \"WTI\""
+          }
+        ]
+      },
+      {
+        "name": "GLA",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\BU_Wealth_GLA_SuperUsers",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-77568"
+          }
+        ],
+        "tablePermissions": [
+          {
+            "name": "Dim_BusinessUnit",
+            "filterExpression": "Dim_BusinessUnit[BusinessUnitAbbreviation] = \"GLA\""
+          }
+        ]
+      }
+    ],
+    "annotations": [
+      {
+        "name": "ClientCompatibilityLevel",
+        "value": "600"
+      },
+      {
+        "name": "TabularEditor_SerializeOptions",
+        "value": "{\"IgnoreInferredObjects\":true,\"IgnoreInferredProperties\":true,\"IgnoreTimestamps\":true,\"SplitMultilineStrings\":true,\"PrefixFilenames\":false}"
+      },
+      {
+        "name": "_TEdtr",
+        "value": "1"
+      }
+    ]
+  }
+}
+

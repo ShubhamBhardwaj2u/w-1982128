@@ -1,0 +1,265 @@
+﻿{
+  "name": "Wealth",
+  "compatibilityLevel": 1600,
+  "model": {
+    "culture": "en-US",
+    "discourageImplicitMeasures": true,
+    "dataSources": [
+      {
+        "name": "EDW_WEALTH_DATAMART",
+        "connectionString": "provider=MSOLEDBSQL.1;integrated security=SSPI;persist security info=False;initial catalog=EDW_WEALTH_DATAMART;data source=UMDA001DWDDLS1;trust server certificate=True",
+        "impersonationMode": "impersonateServiceAccount",
+        "annotations": [
+          {
+            "name": "ConnectionEditUISource",
+            "value": "SqlServer"
+          }
+        ]
+      }
+    ],
+    "tables": [
+      {
+        "name": "Fact_Position",
+        "columns": [
+          {
+            "name": "BusinessUnitKey",
+            "dataType": "int64",
+            "sourceColumn": "BusinessUnitKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "PositionDateKey",
+            "dataType": "int64",
+            "sourceColumn": "PositionDateKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "AccountKey",
+            "dataType": "int64",
+            "sourceColumn": "AccountKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "SecurityKey",
+            "dataType": "int64",
+            "sourceColumn": "SecurityKey",
+            "sourceProviderType": "Integer"
+          },
+          {
+            "name": "MarketQuantity",
+            "dataType": "double",
+            "sourceColumn": "MarketQuantity",
+            "sourceProviderType": "Decimal"
+          },
+          {
+            "name": "MarketPrice",
+            "dataType": "double",
+            "sourceColumn": "MarketPrice",
+            "sourceProviderType": "Decimal"
+          },
+          {
+            "name": "MarketValue",
+            "dataType": "decimal",
+            "sourceColumn": "MarketValue",
+            "formatString": "\\$#,0.00;(\\$#,0.00);\\$#,0.00",
+            "sourceProviderType": "Decimal",
+            "annotations": [
+              {
+                "name": "Format",
+                "value": "<Format Format=\"Currency\" Accuracy=\"2\" ThousandSeparator=\"True\"><Currency LCID=\"1033\" DisplayName=\"$ English (United States)\" Symbol=\"$\" PositivePattern=\"0\" NegativePattern=\"0\"/></Format>"
+              }
+            ]
+          },
+          {
+            "name": "OriginalFaceValue",
+            "dataType": "double",
+            "sourceColumn": "OriginalFaceValue",
+            "sourceProviderType": "Decimal"
+          }
+        ],
+        "calculatedColumns": [
+          {
+            "name": "AccountNumber",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Account[AccountNumber])"
+          },
+          {
+            "name": "Relationship Rep Code",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Relationship Rep[RepCode])"
+          },
+          {
+            "name": "Investment Rep Code",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Investment Rep[RepCode])"
+          },
+          {
+            "name": "CUSIP",
+            "dataType": "string",
+            "isDataTypeInferred": true,
+            "expression": "RELATED(Security[CUSIP])"
+          },
+          {
+            "name": "AccountOpenDate",
+            "dataType": "dateTime",
+            "isDataTypeInferred": true,
+            "expression": "related(Account[OpenDate])",
+            "formatString": "Short Date",
+            "annotations": [
+              {
+                "name": "Format",
+                "value": "<Format Format=\"DateTimeShortDatePattern\" />"
+              }
+            ]
+          },
+          {
+            "name": "AccountCloseDate",
+            "dataType": "dateTime",
+            "isDataTypeInferred": true,
+            "expression": "related(Account[CloseDate])"
+          },
+          {
+            "name": "MarketValueByAccount",
+            "dataType": "decimal",
+            "expression": "CALCULATE(SUM(Fact_Position[MarketValue]),FILTER(Fact_Position,EARLIER(Fact_Position[AccountNumber],1) && Fact_Position[PositionDateKey] && EARLIER(Fact_Position[PositionDateKey],1) && Fact_Position[BusinessUnitKey] && EARLIER(Fact_Position[BusinessUnitKey],1)))",
+            "formatString": "\\$#,0.00;(\\$#,0.00);\\$#,0.00"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Fact_Position",
+            "source": {
+              "query": "SELECT * FROM dbo.Fact_Position",
+              "dataSource": "EDW_WEALTH_DATAMART"
+            },
+            "mode": "import"
+          }
+        ]
+      }
+    ],
+    "roles": [
+      {
+        "name": "Read Access",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\DM-BAR-Reporting",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-65321"
+          },
+          {
+            "memberName": "WINTRUST\\DM_PBI_ProdMgmt",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-70325"
+          },
+          {
+            "memberName": "WINTRUST\\BU_Wealth_GLA_PortfolioManagers",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-77567"
+          },
+          {
+            "memberName": "WINTRUST\\DM_DWBI",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-66341"
+          },
+          {
+            "memberName": "WINTRUST\\DM_SSRS_PBI_TFS_ReleaseManager",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-68195"
+          },
+          {
+            "memberName": "WINTRUST\\BU_Wealth",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-76834"
+          },
+          {
+            "memberName": "SALES\\BU_Wealth_WTI_FinancialAdvisors",
+            "memberId": "S-1-5-21-55146163-1185641427-732247886-16455"
+          },
+          {
+            "memberName": "WINTRUST\\DM_DG_Reporting",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-82258"
+          }
+        ]
+      },
+      {
+        "name": "Read_Process Access",
+        "modelPermission": "readRefresh",
+        "members": [
+          {
+            "memberName": "WINTRUST\\DB_BAR_SVC_PROD_SSASReadProcess",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-69453"
+          },
+          {
+            "memberName": "WINTRUST\\SVC_DM_ETL_UAT",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-62465"
+          },
+          {
+            "memberName": "WINTRUST\\SVC_DM_ETL_DEV",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-62467"
+          }
+        ]
+      },
+      {
+        "name": "CTC",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\SG-WT-ENT-PRD-PBI-U-BU-WEALTH-CTC-SUPERUSERS",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-91469"
+          }
+        ],
+        "tablePermissions": [
+          {
+            "name": "BusinessUnit",
+            "filterExpression": "BusinessUnit[BusinessUnitAbbreviation] = \"CTC\""
+          }
+        ]
+      },
+      {
+        "name": "WTI",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\BU_Wealth_WTI_SuperUsers",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-86105"
+          }
+        ],
+        "tablePermissions": [
+          {
+            "name": "BusinessUnit",
+            "filterExpression": "BusinessUnit[BusinessUnitAbbreviation] = \"WTI\""
+          }
+        ]
+      },
+      {
+        "name": "GLA",
+        "modelPermission": "read",
+        "members": [
+          {
+            "memberName": "WINTRUST\\BU_Wealth_GLA_SuperUsers",
+            "memberId": "S-1-5-21-578641720-2051357032-1179000955-77568"
+          }
+        ],
+        "tablePermissions": [
+          {
+            "name": "BusinessUnit",
+            "filterExpression": "BusinessUnit[BusinessUnitAbbreviation] = \"GLA\""
+          }
+        ]
+      }
+    ],
+    "annotations": [
+      {
+        "name": "ClientCompatibilityLevel",
+        "value": "600"
+      },
+      {
+        "name": "TabularEditor_SerializeOptions",
+        "value": "{\"IgnoreInferredObjects\":true,\"IgnoreInferredProperties\":true,\"IgnoreTimestamps\":true,\"SplitMultilineStrings\":true,\"PrefixFilenames\":false}"
+      },
+      {
+        "name": "_TEdtr",
+        "value": "1"
+      }
+    ]
+  }
+}
+

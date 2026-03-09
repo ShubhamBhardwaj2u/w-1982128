@@ -1,0 +1,17 @@
+{
+  "name": "COGS",
+  "dataType": "double",
+  "sourceColumn": "COGS",
+  "lineageTag": "c1792397-0fcd-43fb-b364-aeda0bdfbbd3",
+  "summarizeBy": "sum",
+  "annotations": [
+    {
+      "name": "SummarizationSetBy",
+      "value": "Automatic"
+    },
+    {
+      "name": "PBI_FormatHint",
+      "value": "{\"isGeneralNumber\":true}"
+    }
+  ]
+}

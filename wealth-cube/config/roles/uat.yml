@@ -1,0 +1,28 @@
+# Role Configuration - UAT Environment
+environment: UAT
+
+roles:
+  - name: "Read Access"
+    members:
+      - "WINTRUST\\DM-BAR-Reporting"
+      - "WINTRUST\\DM_PBI_ProdMgmt"
+      - "WINTRUST\\BU_Wealth_GLA_PortfolioManagers"
+      - "WINTRUST\\DM_DWBI"
+      - "WINTRUST\\BU_Wealth"
+
+  - name: "Read_Process Access"
+    members:
+      - "WINTRUST\\SVC_DM_ETL_UAT"
+
+  - name: "CTC"
+    members:
+      - "WINTRUST\\SG-WT-ENT-PRD-PBI-U-BU-WEALTH-CTC-SUPERUSERS"
+
+  - name: "WTI"
+    members:
+      - "WINTRUST\\BU_Wealth_WTI_SuperUsers"
+
+  - name: "GLA"
+    members:
+      - "WINTRUST\\BU_Wealth_GLA_SuperUsers"
+

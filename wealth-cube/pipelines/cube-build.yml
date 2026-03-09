@@ -1,0 +1,18 @@
+trigger:
+  branches:
+    include:
+      - feature/*
+      - develop
+      - main
+
+resources:
+  repositories:
+  - repository: framework
+    type: git
+    name: wealth-devops-framework
+
+extends:
+  template: templates/cube/build-cube.yml@framework
+  parameters:
+    modelPath: 'src/model/Wealth.bim'
+    artifactName: 'cube-artifact'

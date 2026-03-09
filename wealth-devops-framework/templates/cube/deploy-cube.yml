@@ -1,0 +1,155 @@
+# YAML Template: Cube Deployment Pipeline
+# Purpose: Deploys SSAS Tabular model to on-premises SSAS server
+# Usage: Include this template in Azure DevOps release pipeline
+#
+# PREREQUISITES:
+# 1. Create Variable Groups in Azure DevOps Library (see docs/azure-devops-setup.md)
+# 2. Link Azure KeyVault for secrets in the pipeline
+# 3. See docs/azure-devops-setup.md for detailed setup instructions
+
+parameters:
+  # Deployment targets
+  - name: environmentName
+    displayName: 'Environment name'
+    type: string
+    default: ''
+    values:
+      - DEV
+      - UAT
+      - PROD
+      
+  # Model configuration
+  - name: artifactName
+    displayName: 'Artifact name to deploy'
+    type: string
+    default: 'cube-artifact'
+    
+  - name: bimFileName
+    displayName: 'BIM file name in artifact'
+    type: string
+    default: 'Wealth.bim'
+    
+  # Processing options
+  - name: processType
+    displayName: 'Processing type'
+    type: string
+    default: 'Full'
+    values:
+      - None
+      - Full
+      - Default
+      - DataOnly
+      
+  - name: createDatabaseIfNotExists
+    displayName: 'Create database if not exists'
+    type: boolean
+    default: true
+    
+  - name: updateRoles
+    displayName: 'Update role memberships'
+    type: boolean
+    default: true
+    
+  - name: backupBeforeDeploy
+    displayName: 'Backup before deployment'
+    type: boolean
+    default: false
+    
+  - name: whatIf
+    displayName: 'WhatIf mode (preview only)'
+    type: boolean
+    default: false
+    
+  # Agent configuration
+  - name: agentPool
+    displayName: 'Agent pool name'
+    type: string
+    default: 'self-hosted'
+
+stages:
+  - stage: Deploy_${{ parameters.environmentName }}
+    displayName: 'Deploy to ${{ parameters.environmentName }}'
+    variables:
+      - name: environmentName
+        value: ${{ parameters.environmentName }}
+      # Link Library Group: Wealth-DEV, Wealth-UAT, or Wealth-PROD
+      # In pipeline: variables: - group: 'Wealth-DEV'
+      - name: deployScriptPath
+        value: '$(Pipeline.Workspace)/${{ parameters.artifactName }}/scripts/deploy-cube.ps1'
+      - name: rolesConfigFilePath
+        value: '$(Pipeline.Workspace)/${{ parameters.artifactName }}/config/roles.json'
+      - name: bimFilePath
+        value: '$(Pipeline.Workspace)/${{ parameters.artifactName }}/${{ parameters.bimFileName }}'
+    jobs:
+      - deployment: DeployCube
+        displayName: 'Deploy SSAS Tabular Model'
+        pool:
+          name: ${{ parameters.agentPool }}
+        environment: '${{ parameters.environmentName }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # Step 1: Download artifact
+                - task: DownloadPipelineArtifact@2
+                  displayName: 'Download artifact'
+                  inputs:
+                    artifact: '${{ parameters.artifactName }}'
+                    path: '$(Pipeline.Workspace)/${{ parameters.artifactName }}'
+                    
+                # Step 2: Display deployment info (uses Library Group variables)
+                - task: PowerShell@2
+                  displayName: 'Show deployment info'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      Write-Host "Environment: ${{ parameters.environmentName }}" -ForegroundColor Cyan
+                      Write-Host "SSAS Server: $(SsasServer)" -ForegroundColor Green
+                      Write-Host "Database: $(DatabaseName)" -ForegroundColor Green
+                      Write-Host "Process Type: ${{ parameters.processType }}" -ForegroundColor Yellow
+                    pwsh: false
+                    
+                # Step 3: Deploy cube (uses Library Group variables: SsasServer, DatabaseName, SqlServer, SqlDatabase)
+                - task: PowerShell@2
+                  displayName: 'Deploy cube'
+                  inputs:
+                    targetType: 'filePath'
+                    filePath: '$(deployScriptPath)'
+                    arguments: >
+                      -BimPath "$(bimFilePath)"
+                      -SsasServer "$(SsasServer)"
+                      -DatabaseName "$(DatabaseName)"
+                      -SqlServer "$(SqlServer)"
+                      -SqlDatabase "$(SqlDatabase)"
+                      -ProcessType "${{ parameters.processType }}"
+                      -CreateDatabaseIfNotExists:$${{ parameters.createDatabaseIfNotExists }}
+                      -UpdateRoles:$${{ parameters.updateRoles }}
+                      -RolesConfigFile "$(rolesConfigFilePath)"
+                      -BackupBeforeDeploy:$${{ parameters.backupBeforeDeploy }}
+                      -WhatIf:$${{ parameters.whatIf }}
+                    pwsh: false
+
+# ============================================================
+# EXAMPLE USAGE:
+# ============================================================
+# In your release pipeline:
+#
+# variables:
+#   - group: 'Wealth-Common'
+#   - group: 'Wealth-DEV'
+#
+# stages:
+#   - template: templates/cube/deploy-cube.yml
+#     parameters:
+#       environmentName: DEV
+#       processType: Full
+#
+# IMPORTANT: Link KeyVault in pipeline for secrets:
+#   - task: AzureKeyVault@2
+#     inputs:
+#       azureSubscription: 'your-subscription'
+#       KeyVaultName: 'wealth-kv'
+#       SecretsFilter: '*'
+#
+# See docs/azure-devops-setup.md for complete setup.
+

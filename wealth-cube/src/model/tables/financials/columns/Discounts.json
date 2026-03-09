@@ -1,0 +1,17 @@
+{
+  "name": "Discounts",
+  "dataType": "double",
+  "sourceColumn": "Discounts",
+  "lineageTag": "8ee23124-943c-4f22-b4ec-3beb3b8ea3f3",
+  "summarizeBy": "sum",
+  "annotations": [
+    {
+      "name": "SummarizationSetBy",
+      "value": "Automatic"
+    },
+    {
+      "name": "PBI_FormatHint",
+      "value": "{\"isGeneralNumber\":true}"
+    }
+  ]
+}

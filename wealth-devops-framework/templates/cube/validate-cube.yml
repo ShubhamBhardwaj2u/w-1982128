@@ -1,0 +1,13 @@
+parameters:
+  modelPath: ''
+
+steps:
+
+- checkout: self
+
+- task: PowerShell@2
+  displayName: Validate Tabular Model
+  inputs:
+    targetType: 'filePath'
+    filePath: 'scripts/validate-model.ps1'
+    arguments: '-ModelPath ${{ parameters.modelPath }}'

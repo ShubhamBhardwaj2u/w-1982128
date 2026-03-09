@@ -1,0 +1,14 @@
+{
+  "name": "Manufacturing Price",
+  "dataType": "int64",
+  "sourceColumn": "Manufacturing Price",
+  "formatString": "0",
+  "lineageTag": "c54ac25e-0766-4bb6-9657-bbc27807ab1d",
+  "summarizeBy": "sum",
+  "annotations": [
+    {
+      "name": "SummarizationSetBy",
+      "value": "Automatic"
+    }
+  ]
+}

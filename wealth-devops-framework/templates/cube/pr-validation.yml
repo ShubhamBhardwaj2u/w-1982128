@@ -1,0 +1,395 @@
+# YAML Template: Pull Request Validation Pipeline
+# Purpose: Validates SSAS Tabular model on every PR
+# Usage: Add as a branch policy or use in PR trigger pipeline
+
+parameters:
+  # Model configuration
+  - name: modelPath
+    displayName: 'Path to BIM file'
+    type: string
+    default: 'src/model/Wealth.bim'
+    
+  - name: modelName
+    displayName: 'Model name'
+    type: string
+    default: 'Wealth'
+    
+  # Validation settings (stricter for PRs)
+  - name: strictMode
+    displayName: 'Strict validation mode'
+    type: boolean
+    default: true
+    
+  - name: maxSizeMB
+    displayName: 'Max model size (MB)'
+    type: number
+    default: 50
+    
+  # Check for common issues
+  - name: checkDataSources
+    displayName: 'Check for hardcoded datasources'
+    type: boolean
+    default: true
+    
+  - name: checkRoles
+    displayName: 'Validate role configurations'
+    type: boolean
+    default: true
+    
+  - name: checkMeasures
+    displayName: 'Validate measure definitions'
+    type: boolean
+    default: true
+    
+  - name: checkDAX
+    displayName: 'Check DAX expressions (basic)'
+    type: boolean
+    default: true
+    
+  # Build settings
+  - name: validateScriptPath
+    displayName: 'Path to validation script'
+    type: string
+    default: 'scripts/validate-model.ps1'
+    
+  # Agent configuration
+  - name: agentPool
+    displayName: 'Agent pool name'
+    type: string
+    default: 'azure-pipelines'
+
+trigger: none  # This should be triggered by PR, not push
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - 'src/**'
+      - 'scripts/**'
+
+variables:
+  - name: validationScriptPath
+    value: '$(Build.Repository.LocalPath)/${{ parameters.validateScriptPath }}'
+
+stages:
+  # ============================================================
+  # Stage 1: Model Validation
+  # ============================================================
+  - stage: ValidateModel
+    displayName: '🔍 Validate Model'
+    jobs:
+      - job: ValidateBIM
+        displayName: 'Validate BIM Structure'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: self
+            
+          # Step 1: Basic BIM validation
+          - task: PowerShell@2
+            displayName: 'Validate BIM model structure'
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(validationScriptPath)'
+              arguments: >
+                -ModelPath "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                -StrictMode:$${{ parameters.strictMode }}
+                -MaxSizeMB ${{ parameters.maxSizeMB }}
+              errorActionPreference: 'Stop'
+              pwsh: false
+              
+          # Step 2: Check for hardcoded values
+          - task: PowerShell@2
+            displayName: 'Check for hardcoded values'
+            condition: eq(${{ parameters.checkDataSources }}, true)
+            inputs:
+              targetType: 'inline'
+              script: |
+                $bimPath = "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                $issues = @()
+                
+                $content = Get-Content $bimPath -Raw
+                $bim = $content | ConvertFrom-Json
+                
+                # Check datasources for connection strings
+                foreach ($ds in $bim.model.dataSources) {
+                    if ($ds.connectionString -match 'localhost|127\.0\.0\.1') {
+                        $issues += "Datasource '$($ds.name)' contains localhost reference"
+                    }
+                    if ($ds.connectionString -match 'Data Source=[\w]+;') {
+                        # Check for common dev database names
+                        if ($ds.connectionString -match 'Dev|Test|Staging') {
+                            $issues += "Datasource '$($ds.name)' contains environment-specific database reference"
+                        }
+                    }
+                }
+                
+                if ($issues.Count -gt 0) {
+                    Write-Host "##vso[task.logissue type=warning]Hardcoded values detected:" -ForegroundColor Yellow
+                    foreach ($issue in $issues) {
+                        Write-Host "##vso[task.logissue type=warning]  - $issue" -ForegroundColor Yellow
+                    }
+                    Write-Warning "Found $($issues.Count) potential issue(s) with hardcoded values"
+                }
+                else {
+                    Write-Host "No hardcoded values detected in datasources" -ForegroundColor Green
+                }
+              pwsh: false
+              
+          # Step 3: Validate roles
+          - task: PowerShell@2
+            displayName: 'Validate role configurations'
+            condition: eq(${{ parameters.checkRoles }}, true)
+            inputs:
+              targetType: 'inline'
+              script: |
+                $bimPath = "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                $issues = @()
+                
+                $content = Get-Content $bimPath -Raw
+                $bim = $content | ConvertFrom-Json
+                
+                $roles = $bim.model.roles
+                Write-Host "Found $($roles.Count) role(s) in model" -ForegroundColor Cyan
+                
+                if ($roles.Count -eq 0) {
+                    $issues += "Model has no roles defined - consider adding security roles"
+                }
+                
+                foreach ($role in $roles) {
+                    Write-Host "  Role: $($role.name) - $($role.modelPermission)" -ForegroundColor Gray
+                    
+                    # Check for admin permission
+                    if ($role.modelPermission -eq "Admin") {
+                        Write-Host "    WARNING: Admin role detected - $($role.name)" -ForegroundColor Yellow
+                    }
+                    
+                    # Check if role has no members (except in development)
+                    if ($role.members.Count -eq 0) {
+                        $issues += "Role '$($role.name)' has no members defined"
+                    }
+                }
+                
+                if ($issues.Count -gt 0) {
+                    Write-Host "##vso[task.logissue type=warning]Role issues detected:" -ForegroundColor Yellow
+                    foreach ($issue in $issues) {
+                        Write-Host "##vso[task.logissue type=warning]  - $issue" -ForegroundColor Yellow
+                    }
+                }
+              pwsh: false
+              
+          # Step 4: Validate measures
+          - task: PowerShell@2
+            displayName: 'Validate measure definitions'
+            condition: eq(${{ parameters.checkMeasures }}, true)
+            inputs:
+              targetType: 'inline'
+              script: |
+                $bimPath = "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                $content = Get-Content $bimPath -Raw
+                $bim = $content | ConvertFrom-Json
+                
+                $totalMeasures = 0
+                $tablesWithMeasures = 0
+                
+                foreach ($table in $bim.model.tables) {
+                    if ($table.measures -and $table.measures.Count -gt 0) {
+                        $tablesWithMeasures++
+                        $totalMeasures += $table.measures.Count
+                    }
+                }
+                
+                Write-Host "Model contains:" -ForegroundColor Cyan
+                Write-Host "  Tables with measures: $tablesWithMeasures" -ForegroundColor Gray
+                Write-Host "  Total measures: $totalMeasures" -ForegroundColor Gray
+                
+                if ($totalMeasures -eq 0) {
+                    Write-Host "##vso[task.logissue type=warning]No measures defined in model" -ForegroundColor Yellow
+                }
+              pwsh: false
+              
+          # Step 5: Basic DAX check
+          - task: PowerShell@2
+            displayName: 'Check DAX expressions'
+            condition: eq(${{ parameters.checkDAX }}, true)
+            inputs:
+              targetType: 'inline'
+              script: |
+                $bimPath = "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                $content = Get-Content $bimPath -Raw
+                $bim = $content | ConvertFrom-Json
+                
+                $daxIssues = @()
+                $measuresChecked = 0
+                
+                function Check-DAXExpression {
+                    param([string]$Expression)
+                    
+                    if ([string]::IsNullOrWhiteSpace($Expression)) {
+                        return $true
+                    }
+                    
+                    # Check for common issues
+                    if ($Expression -match 'SELECTEDVALUE\([^)]*\)\s*=\s*BLANK\(\)') {
+                        return $false  # This is OK for filtering
+                    }
+                    
+                    return $true
+                }
+                
+                # Check measures
+                foreach ($table in $bim.model.tables) {
+                    if ($table.measures) {
+                        foreach ($measure in $table.measures) {
+                            $measuresChecked++
+                            
+                            if ([string]::IsNullOrWhiteSpace($measure.expression)) {
+                                $daxIssues += "Measure '$($measure.name)' has empty expression"
+                            }
+                        }
+                    }
+                }
+                
+                Write-Host "Checked $measuresChecked measure(s)" -ForegroundColor Cyan
+                
+                if ($daxIssues.Count -gt 0) {
+                    Write-Host "##vso[task.logissue type=warning]DAX issues found:" -ForegroundColor Yellow
+                    foreach ($issue in $daxIssues) {
+                        Write-Host "##vso[task.logissue type=warning]  - $issue" -ForegroundColor Yellow
+                    }
+                }
+                else {
+                    Write-Host "No DAX expression issues detected" -ForegroundColor Green
+                }
+              pwsh: false
+              
+          # Step 6: Generate validation report
+          - task: PowerShell@2
+            displayName: 'Generate validation report'
+            inputs:
+              targetType: 'inline'
+              script: |
+                $reportPath = "$(Build.ArtifactStagingDirectory)/validation-report.md"
+                
+                $report = @"
+# SSAS Tabular Model Validation Report
+
+## Build Information
+- **Build ID**: $(Build.BuildId)
+- **Build Number**: $(Build.BuildNumber)
+- **Source Branch**: $(Build.SourceBranch)
+- **Commit**: $(Build.SourceVersion)
+- **Author**: $(Build.SourceAuthor)
+
+## Model Information
+- **Model Path**: ${{ parameters.modelPath }}
+- **Model Name**: ${{ parameters.modelName }}
+
+## Validation Settings
+- **Strict Mode**: ${{ parameters.strictMode }}
+- **Max Size**: ${{ parameters.maxSizeMB }} MB
+
+## Validation Status
+- **Status**: PASSED
+- **Timestamp**: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+
+## Recommendations
+1. Review all warnings above
+2. Ensure datasource connection strings use parameters
+3. Verify role memberships are correct
+4. Test DAX measures in Tabular Editor before merging
+
+---
+*Generated by Azure DevOps CI/CD Pipeline*
+"@
+                
+                $report | Out-File -FilePath $reportPath -Encoding UTF8
+                Write-Host "Validation report generated: $reportPath" -ForegroundColor Green
+              pwsh: false
+              
+          # Step 7: Publish validation report
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish validation report'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'pr-validation-report'
+              publishLocation: 'Pipeline'
+
+  # ============================================================
+  # Stage 2: Security Check (optional)
+  # ============================================================
+  - stage: SecurityCheck
+    displayName: '🔒 Security Check'
+    jobs:
+      - job: CheckSecurity
+        displayName: 'Security Validation'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: self
+            
+          - task: PowerShell@2
+            displayName: 'Check for sensitive data'
+            inputs:
+              targetType: 'inline'
+              script: |
+                $bimPath = "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                $sensitivePatterns = @(
+                    'password',
+                    'pwd',
+                    'secret',
+                    'key',
+                    'token',
+                    'connection string',
+                    'integrated security'
+                )
+                
+                $content = Get-Content $bimPath -Raw -Encoding UTF8
+                $found = @()
+                
+                foreach ($pattern in $sensitivePatterns) {
+                    if ($content -match $pattern) {
+                        $found += $pattern
+                    }
+                }
+                
+                if ($found.Count -gt 0) {
+                    Write-Host "##vso[task.logissue type=error]Potential sensitive data found:" -ForegroundColor Red
+                    foreach ($item in $found) {
+                        Write-Host "##vso[task.logissue type=error]  - $item" -ForegroundColor Red
+                    }
+                    Write-Error "Sensitive data detected in model - please review"
+                }
+                else {
+                    Write-Host "No sensitive data patterns detected" -ForegroundColor Green
+                }
+              pwsh: false
+
+# ============================================================
+# NOTES:
+# ============================================================
+# 1. This template runs on every PR to main/develop
+# 2. Configure as a branch policy in Azure DevOps
+# 3. Requires self-hosted agent with SSMS for TOM (optional)
+# 4. Set strictMode=true for PRs (stricter validation)
+#
+# Example Azure DevOps Pipeline configuration:
+#   trigger: none
+#   pr:
+#     branches:
+#       include:
+#         - main
+#         - develop
+#     paths:
+#       include:
+#         - src/**
+#
+#   stages:
+#     - template: templates/cube/pr-validation.yml
+#       parameters:
+#         modelPath: 'src/model/Wealth.bim'
+#         strictMode: true
+

@@ -1,0 +1,5 @@
+{
+  "UseWorkspace": true,
+  "WorkspaceConnection": "provider=MSOLAP;data source=localhost:2383",
+  "WorkspaceDatabase": "WealthCube_Dev"
+}

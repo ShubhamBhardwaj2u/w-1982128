@@ -1,0 +1,17 @@
+{
+  "name": "Units Sold",
+  "dataType": "double",
+  "sourceColumn": "Units Sold",
+  "lineageTag": "db96e231-a772-46a3-80f2-991ffbd34c7b",
+  "summarizeBy": "sum",
+  "annotations": [
+    {
+      "name": "SummarizationSetBy",
+      "value": "Automatic"
+    },
+    {
+      "name": "PBI_FormatHint",
+      "value": "{\"isGeneralNumber\":true}"
+    }
+  ]
+}

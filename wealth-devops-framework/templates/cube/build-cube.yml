@@ -1,0 +1,239 @@
+# YAML Template: Cube Build Pipeline
+# Purpose: Validates and builds SSAS Tabular model artifact for deployment
+# Usage: Include this template in azure-pipelines.yml in wealth-cube repository
+
+parameters:
+  # Model configuration
+  - name: modelPath
+    displayName: 'Path to BIM file'
+    type: string
+    default: 'src/model/Wealth.bim'
+    
+  - name: modelName
+    displayName: 'Model name'
+    type: string
+    default: 'Wealth'
+    
+  # Build configuration
+  - name: buildConfiguration
+    displayName: 'Build Configuration'
+    type: string
+    default: 'Release'
+    values:
+      - Debug
+      - Release
+    
+  # Validation settings
+  - name: enableValidation
+    displayName: 'Enable model validation'
+    type: boolean
+    default: true
+    
+  - name: strictMode
+    displayName: 'Strict validation mode'
+    type: boolean
+    default: false
+    
+  - name: maxSizeMB
+    displayName: 'Max model size (MB)'
+    type: number
+    default: 100
+    
+  # Output settings
+  - name: artifactName
+    displayName: 'Artifact name'
+    type: string
+    default: 'cube-artifact'
+    
+  - name: artifactDropPath
+    displayName: 'Artifact drop path'
+    type: string
+    default: '$(Build.ArtifactStagingDirectory)'
+    
+  # Source control
+  - name: cleanWorkspace
+    displayName: 'Clean workspace before build'
+    type: boolean
+    default: false
+
+variables:
+  - template: variables/cube-build-variables.yml
+  - name: validateScriptPath
+    value: '$(Build.Repository.LocalPath)/scripts/validate-model.ps1'
+  - name: bimFileName
+    value: '${{ parameters.modelName }}.bim'
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - 'feature/*'
+      - 'release/*'
+  paths:
+    include:
+      - 'src/**'
+      - 'scripts/**'
+      - 'templates/**'
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - 'src/**'
+
+stages:
+  # ============================================================
+  # Stage 1: Validate
+  # ============================================================
+  - stage: Validate
+    displayName: '🔍 Validate Model'
+    condition: eq(${{ parameters.enableValidation }}, true)
+    jobs:
+      - job: ValidateModel
+        displayName: 'Validate Tabular Model'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: self
+            clean: ${{ parameters.cleanWorkspace }}
+            
+          - task: PowerShell@2
+            displayName: 'Validate BIM model'
+            env:
+              MODEL_PATH: ${{ parameters.modelPath }}
+            inputs:
+              targetType: 'filePath'
+              filePath: '$(validateScriptPath)'
+              arguments: >
+                -ModelPath "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                -StrictMode:$${{ parameters.strictMode }}
+                -MaxSizeMB ${{ parameters.maxSizeMB }}
+              errorActionPreference: 'Stop'
+              failOnStderr: true
+              pwsh: false
+            
+          - task: PublishTestResults@2
+            displayName: 'Publish validation results'
+            condition: always()
+            inputs:
+              testResultsFormat: 'NUnit'
+              testResultsFiles: '**/TestResults/*.xml'
+              testRunTitle: 'Model Validation'
+            continueOnError: true
+
+  # ============================================================
+  # Stage 2: Build
+  # ============================================================
+  - stage: Build
+    displayName: '📦 Build Artifact'
+    jobs:
+      - job: BuildArtifact
+        displayName: 'Build Cube Artifact'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: self
+            clean: ${{ parameters.cleanWorkspace }}
+            
+          - task: PowerShell@2
+            displayName: 'Prepare artifact folder'
+            inputs:
+              targetType: 'inline'
+              script: |
+                # Create artifact directory
+                $artifactPath = "${{ parameters.artifactDropPath }}"
+                if (!(Test-Path $artifactPath)) {
+                    New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
+                }
+                Write-Host "Artifact path: $artifactPath"
+                
+                # Copy BIM file
+                $bimPath = "$(System.DefaultWorkingDirectory)/${{ parameters.modelPath }}"
+                $bimFileName = "${{ parameters.modelName }}.bim"
+                $destPath = Join-Path $artifactPath $bimFileName
+                
+                if (Test-Path $bimPath) {
+                    Copy-Item -Path $bimPath -Destination $destPath -Force
+                    Write-Host "Copied: $bimPath -> $destPath"
+                    
+                    $fileSize = (Get-Item $destPath).Length / 1MB
+                    Write-Host "File size: $([math]::Round($fileSize, 2)) MB"
+                }
+                else {
+                    Write-Error "BIM file not found: $bimPath"
+                }
+              pwsh: false
+              
+          - task: CopyFiles@2
+            displayName: 'Copy configuration files'
+            inputs:
+              SourceFolder: '$(System.DefaultWorkingDirectory)/config'
+              TargetFolder: '${{ parameters.artifactDropPath }}/config'
+              contents: |
+                **/*.json
+              flattenFolders: false
+              overWrite: true
+              
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish cube artifact'
+            inputs:
+              PathtoPublish: '${{ parameters.artifactDropPath }}'
+              ArtifactName: '${{ parameters.artifactName }}'
+              publishLocation: 'Pipeline'
+              
+          # Publish BIM as a separate artifact for debugging
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish BIM for debugging'
+            inputs:
+              PathtoPublish: '${{ parameters.modelPath }}'
+              ArtifactName: '${{ parameters.artifactName }}-source'
+              publishLocation: 'Pipeline'
+
+  # ============================================================
+  # Stage 3: Create Release Branch Artifact (for main/develop)
+  # ============================================================
+  - stage: ReleaseBranch
+    displayName: '🚀 Prepare Release'
+    condition: |
+      and(
+        eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+        eq(variables['Build.Reason'], 'Manual')
+      )
+    jobs:
+      - job: CreateReleaseTag
+        displayName: 'Create Release Tag'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - checkout: none
+            
+          - task: PowerShell@2
+            displayName: 'Generate release information'
+            inputs:
+              targetType: 'inline'
+              script: |
+                $buildId = "$(Build.BuildNumber)"
+                $date = Get-Date -Format "yyyy-MM-dd"
+                
+                $releaseInfo = @{
+                    buildId = $buildId
+                    buildNumber = $env:BUILD_BUILDNUMBER
+                    sourceBranch = "$(Build.SourceBranch)"
+                    commitId = "$(Build.SourceVersion)"
+                    commitMessage = "$(Build.SourceMessage)"
+                    createdDate = $date
+                } | ConvertTo-Json
+                
+                $releaseInfo | Out-File -FilePath "$(Build.ArtifactStagingDirectory)/release-info.json" -Encoding UTF8
+                
+                Write-Host "Release info:"
+                Write-Host $releaseInfo
+              pwsh: false
+              
+          - publish: $(Build.ArtifactStagingDirectory)/release-info.json
+            artifact: 'release-info'
+

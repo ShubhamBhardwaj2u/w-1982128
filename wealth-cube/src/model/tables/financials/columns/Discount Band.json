@@ -1,0 +1,13 @@
+{
+  "name": "Discount Band",
+  "dataType": "string",
+  "sourceColumn": "Discount Band",
+  "lineageTag": "53a8c758-631d-4a82-b0c3-b46f39b75c94",
+  "summarizeBy": "none",
+  "annotations": [
+    {
+      "name": "SummarizationSetBy",
+      "value": "Automatic"
+    }
+  ]
+}

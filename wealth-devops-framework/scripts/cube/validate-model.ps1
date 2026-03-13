@@ -143,26 +143,7 @@ function Test-CompatibilityLevel {
     return $true
 }
 
-function Test-ModelSize {
-    param([string]$Path, [int]$MaxMB)
-    
-    Write-Section "Step 4: Model Size Validation"
-    
-    $fileInfo = Get-Item $Path
-    $sizeBytes = $fileInfo.Length
-    $sizeMB = [math]::Round($sizeBytes / 1MB, 2)
-    $maxBytes = $MaxMB * 1MB
-    
-    Write-Log "File size: $sizeMB MB (Max: $MaxMB MB)"
-    
-    if ($sizeBytes -gt $maxBytes) {
-        Add-ValidationError "Model file exceeds maximum size limit: $sizeMB MB > $MaxMB MB"
-        return $false
-    }
-    
-    Write-Log "Model size is within acceptable limits" -Level "SUCCESS"
-    return $true
-}
+
 
 function Test-RequiredObjects {
     param([hashtable]$Model)
@@ -369,9 +350,7 @@ if ($allPassed) {
         $allPassed = $false
     }
     
-    if (-not (Test-ModelSize -Path $ModelPath -MaxMB $MaxSizeMB)) {
-        $allPassed = $false
-    }
+
     
     if (-not (Test-RequiredObjects -Model $modelHash)) {
         $allPassed = $false

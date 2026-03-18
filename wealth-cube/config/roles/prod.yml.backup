@@ -1,8 +1,9 @@
-# Role Configuration - Production Environment
+# Role Configuration - Production Environment (backup before array format fix)
 environment: PROD
 
 roles:
-  - name: Read Access
+
+  Read Access:
     members:
       - "WINTRUST\\DM-BAR-Reporting"
       - "WINTRUST\\DM_PBI_ProgMgmt"
@@ -10,18 +11,22 @@ roles:
       - "WINTRUST\\DM_DWBI"
       - "WINTRUST\\DM_SSRS_PBI_TFS_ReleaseManager"
       - "WINTRUST\\BU_Wealth"
-      - "WINTRUST\\TEMP_BU_Wealth_WTI_FinancialAdvisors"
+      - "SALES\\BU_Wealth_WTI_FinancialAdvisors"
       - "WINTRUST\\DM_DG_Reporting"
-  - name: Read_Process Access
+
+  Read_Process Access:
     members:
       - "WINTRUST\\DB_BAR_SVC_PROD_SSASReadProcess"
-  - name: CTC
+
+  CTC:
     members:
       - "WINTRUST\\SG-WT-ENT-PRD-PBI-U-BU-WEALTH-CTC-SUPERUSERS"
-  - name: WTI
+
+  WTI:
     members:
       - "WINTRUST\\BU_Wealth_WTI_SuperUsers"
-  - name: GLA
+
+  GLA:
     members:
       - "WINTRUST\\BU_Wealth_GLA_SuperUsers"
 

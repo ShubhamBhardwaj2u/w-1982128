@@ -2,8 +2,7 @@
 environment: DEV
 
 roles:
-
-  Read Access:
+  - name: Read Access
     members:
       - "WINTRUST\\DM-BAR-Reporting"
       - "WINTRUST\\DM_PBI_ProgMgmt"
@@ -11,23 +10,20 @@ roles:
       - "WINTRUST\\DM_DWBI"
       - "WINTRUST\\DM_SSRS_PBI_TFS_ReleaseManager"
       - "WINTRUST\\BU_Wealth_DEV"
-      - "SALES\\BU_Wealth_WTI_FinancialAdvisors"
+      - "WINTRUST\\TEMP_BU_Wealth_WTI_FinancialAdvisors"
       - "WINTRUST\\DM_DG_Reporting"
-
-  Read_Process Access:
+  - name: Read_Process Access
     members:
       - "WINTRUST\\DB_BAR_SVC_PROD_SSASReadProcess"
       - "WINTRUST\\SVC_DM_ETL_UAT"
       - "WINTRUST\\SVC_DM_ETL_DEV"
-
-  CTC:
+  - name: CTC
     members:
       - "WINTRUST\\SG-WT-ENT-PRD-PBI-U-BU-WEALTH-CTC-SUPERUSERS"
-
-  WTI:
+  - name: WTI
     members:
       - "WINTRUST\\BU_Wealth_WTI_SuperUsers"
-
-  GLA:
+  - name: GLA
     members:
       - "WINTRUST\\BU_Wealth_GLA_SuperUsers"
+

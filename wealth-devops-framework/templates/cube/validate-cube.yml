@@ -9,5 +9,5 @@ steps:
   displayName: Validate Tabular Model
   inputs:
     targetType: 'filePath'
-    filePath: 'scripts/validate-model.ps1'
+    filePath: 'scripts/cube/validate-model.ps1'
     arguments: '-ModelPath ${{ parameters.modelPath }}'

@@ -1,125 +1,221 @@
-<#
-.SYNOPSIS
-    Strictly synchronizes SSAS Tabular model roles with YAML configuration using JSON parsing (TOM-independent).
-.DESCRIPTION
-    Replaces BIM role members with YAML definitions. Strict validation.
-.PARAMETER BimPath
-    Path to .bim file.
-.PARAMETER Environment
-    DEV/UAT/PROD.
-.PARAMETER RolesConfigFile
-    YAML config path.
-.PARAMETER DryRun
-    Preview changes.
-#>
-
 param(
-    [Parameter(Mandatory)][string]$BimPath,
-    [Parameter(Mandatory)][ValidateSet('DEV', 'UAT', 'PROD')][string]$Environment,
-    [Parameter(Mandatory)][string]$RolesConfigFile,
+    [Parameter(Mandatory=$true, Position=0)]
+    [ValidateScript({Test-Path $_})]
+    [string]$BimPath,
+
+    [Parameter(Mandatory=$true, Position=1)]
+    [ValidateSet("DEV", "UAT", "PROD")]
+    [string]$Environment = "DEV",
+
+    [Parameter(Mandatory=$true, Position=2)]
+    [string]$RolesConfigFile,
+
+    [switch]$StrictMode,
     [switch]$DryRun
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Stop"
 
-function Write-Header([string]$Title) {
-    $line = '═' * ($Title.Length + 4)
-    Write-Host "`n$line"
-    Write-Host "  $Title" 
-    Write-Host $line
+$Colors = @{
+    Red = [ConsoleColor]::Red
+    Yellow = [ConsoleColor]::Yellow
+    Green = [ConsoleColor]::Green
+    Cyan = [ConsoleColor]::Cyan
+    White = [ConsoleColor]::White
 }
 
-function Write-Log([string]$Message, [string]$Level = 'INFO') {
-    $timestamp = Get-Date -Format 'HH:mm:ss'
-    $prefix = "[$timestamp] [$Level]"
-    $color = switch ($Level) {
-        'ERROR' { 'Red' }
-        'WARN'  { 'Yellow' }
-        'SUCCESS' { 'Green' }
-        default { 'Cyan' }
+$script:ValidationErrors = @()
+
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $color = $Colors.White
+    switch ($Level) {
+        "ERROR" { $color = $Colors.Red }
+        "WARNING" { $color = $Colors.Yellow }
+        "SUCCESS" { $color = $Colors.Green }
+        "INFO" { $color = $Colors.Cyan }
     }
-    Write-Host "$prefix $Message" -ForegroundColor $color
+    Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
 }
 
-# Load modules
-if (-not (Get-Module powershell-yaml -ListAvailable)) {
-    Install-Module powershell-yaml -Scope CurrentUser -Force
+function Write-Section {
+    param([string]$Title)
+    Write-Host ""
+    Write-Host "============================================================"
+    Write-Host "  $Title"
+    Write-Host "============================================================"
 }
-Import-Module powershell-yaml
 
-# Validate files
-if (-not (Test-Path $BimPath)) { Write-Log 'BIM missing' 'ERROR'; exit 1 }
-if (-not (Test-Path $RolesConfigFile)) { Write-Log 'YAML missing' 'ERROR'; exit 1 }
-
-Write-Header 'SSAS ROLE SYNCHRONIZER v3.0 - JSON MODE'
-Write-Log "BIM: $BimPath | YAML: $RolesConfigFile | Env: $Environment"
-if ($DryRun) { Write-Log 'DRY RUN' 'WARN' }
+function Add-ValidationError {
+    param([string]$Message)
+    $script:ValidationErrors += $Message
+    Write-Log $Message "ERROR"
+}
 
 # Load YAML
-$config = Get-Content $RolesConfigFile -Raw | ConvertFrom-Yaml
-
-Write-Header 'YAML VALIDATION'
-if ($config.environment -ne $Environment) { Write-Log 'Env mismatch' 'ERROR'; exit 1 }
-$yamlRoles = $config.roles
-if (-not $yamlRoles -or $yamlRoles.Count -eq 0) { Write-Log 'No roles in YAML' 'ERROR'; exit 1 }
-
-$yamlRoleNames = $yamlRoles | ForEach-Object name
-$dupes = $yamlRoleNames | Group-Object | Where Count -gt 1
-if ($dupes) { Write-Log 'Role duplicates' 'ERROR'; exit 1 }
-
-foreach ($role in $yamlRoles) {
-    if (-not $role.name -or -not $role.members) { Write-Log "Bad role: $($role.name)" 'ERROR'; exit 1 }
-    foreach ($m in $role.members) {
-        if ($m -notmatch '^[^\\]+\\[^\\]+$') { Write-Log "Bad member '$m'" 'ERROR'; exit 1 }
-    }
+try {
+    Import-Module powershell-yaml -ErrorAction Stop
+} catch {
+    Install-Module powershell-yaml -Scope CurrentUser -Force -ErrorAction Stop
+    Import-Module powershell-yaml
 }
-Write-Log 'YAML OK' 'SUCCESS'
 
-# Load BIM
-Write-Header 'BIM LOADING'
-$bimRaw = Get-Content $BimPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$bim = $bimRaw.model
-
-if (-not $bim.roles) { Write-Log 'No roles in BIM' 'ERROR'; exit 1 }
-Write-Log "BIM roles found: $($bim.roles.Count)" 'SUCCESS'
-
-# Role sync validation
-Write-Header 'ROLE SYNC CHECK'
-$bimRoleNames = $bim.roles | ForEach-Object name
-$missing = $yamlRoleNames | Where { $_ -notin $bimRoleNames }
-$extra = $bimRoleNames | Where { $_ -notin $yamlRoleNames }
-if ($missing) { Write-Log "YAML missing in BIM: $missing" 'ERROR'; exit 1 }
-if ($extra) { Write-Log "BIM extra: $extra" 'ERROR'; exit 1 }
-Write-Log 'Roles sync perfect' 'SUCCESS'
-
-# Update roles
-Write-Header 'MEMBER UPDATE'
-foreach ($roleDef in $yamlRoles) {
-    $role = $bim.roles | Where name -eq $roleDef.name
-    $currentCount = $role.members.Count
+function Test-YamlStructure {
+    param([string]$Path, [string]$ExpectedEnv)
     
-    if ($DryRun) {
-        Write-Host "`n$($roleDef.name):"
-        Write-Host "  Current: $currentCount members"
-        Write-Host "  New: $($roleDef.members.Count)"
-        Write-Host "  Would set: $($roleDef.members -join ', ')"
-        continue
+    Write-Section "YAML Structure Validation"
+    
+    try {
+        $config = Get-Content $Path -Raw | ConvertFrom-Yaml
+        
+        if ($config.environment -ne $ExpectedEnv) {
+            Add-ValidationError "Environment mismatch: '$($config.environment)' expected '$ExpectedEnv'"
+            return $false
+        }
+        
+        $roles = $config.roles
+        if (-not $roles -or $roles.Count -eq 0) {
+            Add-ValidationError "No roles defined, please add at least one role to the environment configuration file."
+            return $false
+        }
+        
+        $roleNames = $roles | ForEach-Object name
+        $duplicates = $roleNames | Group-Object | Where-Object Count -gt 1
+        if ($duplicates) {
+            Add-ValidationError "Duplicates: $($duplicates.name -join ', ')"
+            return $false
+        }
+        
+        foreach ($role in $roles) {
+            if (-not $role.name -or -not $role.members -or $role.members.Count -eq 0) {
+                Add-ValidationError "Invalid role: '$($role.name)'"
+                return $false
+            }
+            foreach ($member in $role.members) {
+                if ($member -notmatch "^[^\\]+\\[^\\]+$") {
+                    Add-ValidationError "Invalid member '$member' in role '$($role.name)'"
+                    return $false
+                }
+            }
+        }
+        
+        Write-Log "Configuration file validated ($($roles.Count) roles)" "SUCCESS"
+        return @{ config = $config; roles = $roles }
     }
-
-    # Replace members
-    $role.members = $roleDef.members | ForEach-Object {
-        @{ memberName = $_ }
+    catch {
+        Add-ValidationError "YAML error: $($_.Exception.Message)"
+        Write-Log "Error occurred while validating YAML configuration" "ERROR"
+        return $false
     }
-    Write-Log "Updated $($roleDef.name)" 'SUCCESS'
 }
 
+function Test-BimRoleSync {
+    param($BimModel, [array]$YamlRoles)
+    
+    Write-Section "Role Sync Validation"
+    
+    if (-not $bimModel.roles) {
+        Add-ValidationError "BIM has no roles"
+        exit 1
+    }
+
+    $bimNames = $BimModel.roles | ForEach-Object name
+    $yamlNames = $YamlRoles | ForEach-Object name
+    
+    $missing = $yamlNames | Where { $_ -notin $bimNames }
+    $extra = $bimNames | Where { $_ -notin $yamlNames }
+    
+    if ($missing) {
+        Add-ValidationError "Roles Missing in BIM: $($missing -join ', ')"
+        return $false
+    }
+    
+    if ($StrictMode -and $extra) {
+        Add-ValidationError "Extra Roles in BIM: $($extra -join ', ')"
+        return $false
+    } elseif ($extra) {
+        Write-Log "Extra Roles in BIM: $($extra -join ', ')" "WARNING"
+    }
+    
+    Write-Log "Roles are in sync" "SUCCESS"
+    return $true
+}
+
+function Sync-RoleMembers {
+    param($BimModel, [array]$YamlRoles, [switch]$DryRun)
+    
+    Write-Section "Member Synchronization"
+    
+    foreach ($yamlRole in $YamlRoles) {
+        $role = $BimModel.roles | Where-Object { $_.name -eq $yamlRole.name }
+        
+        if (-not $role.members) {
+            $role.members = @()
+        } elseif ($role.members -isnot [System.Collections.IEnumerable] -or $role.members -is [String]) {
+            $role.members = @($role.members)
+        }
+
+        $oldCount = $role.members.Count
+        
+        if ($DryRun) {
+            Write-Host "  $($yamlRole.name): $oldCount (old) --> $($yamlRole.members.Count) (New)"
+            continue
+        }
+        
+        $role.members = $yamlRole.members | ForEach-Object { @{ memberName = $_ } }
+        Write-Host "  $($yamlRole.name): $oldCount (old) --> $($yamlRole.members.Count) (New)" -ForegroundColor Cyan
+        # Write-Log "Members Synced '$($yamlRole.name)'" "SUCCESS"
+    }
+    
+    Write-Log "Members synchronized" "SUCCESS"
+}
+
+# MAIN
+#-----------------------------------------------------
+Write-Section "SSAS Tabular Role Synchronizer"
+
+if (-not $RolesConfigFile) {
+    Write-Host "No roles config file specified. "
+    Write-Host "Please provide a path to the YAML roles config file using -RolesConfigFile parameter."
+    exit 1
+}
+
+Write-Log "BIM: $BimPath"
+Write-Log "YAML: $RolesConfigFile"
+Write-Log "Strict: $StrictMode"
+
+if ($DryRun) {
+    Write-Log "*** DRY RUN MODE ***" "WARNING"
+}
+
+# 1. YAML
+$yamlData = Test-YamlStructure $RolesConfigFile $Environment
+if (-not $yamlData) { exit 1 }
+$config = $yamlData.config
+$yamlRoles = $yamlData.roles
+
+# 2. BIM
+$bimRaw = Get-Content $BimPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$bimModel = $bimRaw.model
+
+Write-Log "BIM file Validated ($($bimModel.roles.Count) roles)" "SUCCESS"
+
+# 3. Sync check
+if (-not (Test-BimRoleSync $bimModel $yamlRoles)) { exit 1 }
+
+
+# 4. Update
+Sync-RoleMembers $bimModel $yamlRoles -DryRun:$DryRun
+
+# 5. Save
 if (-not $DryRun) {
-    Write-Header 'SAVE BIM'
-    $bimRaw | ConvertTo-Json -Depth 20 | Set-Content $BimPath -NoNewline -Encoding UTF8
-    Write-Log 'BIM saved' 'SUCCESS'
+    Write-Section "Saving BIM"
+    $bimRaw | ConvertTo-Json -Depth 20 | Set-Content $BimPath -Encoding UTF8 -NoNewline
+    Write-Log "Saved successfully" "SUCCESS"
 }
 
-Write-Header 'COMPLETE'
-Write-Log 'Role sync successful' 'SUCCESS'
+Write-Section "COMPLETE"
+Write-Log "Roles validation and sync finished" "SUCCESS"
 exit 0
 

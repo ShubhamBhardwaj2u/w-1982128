@@ -13,4 +13,4 @@ resources:
 extends:
   template: templates/cube/validate-cube.yml@framework
   parameters:
-    modelPath: 'src/model/Wealth.bim'
+    modelPath: 'src/bin/Wealth.bim'

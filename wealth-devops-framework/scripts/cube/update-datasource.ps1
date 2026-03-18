@@ -41,16 +41,23 @@ $Colors = @{
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $color = switch ($Level) { "ERROR" { $Colors.Red } "WARNING" { $Colors.Yellow } "SUCCESS" { $Colors.Green } default { $Colors.Cyan } }
+    
+    $color = switch ($Level) { 
+        "ERROR" { $Colors.Red } 
+        "WARNING" { $Colors.Yellow } 
+        "SUCCESS" { $Colors.Green } 
+        default { $Colors.Cyan } 
+    }
+
     Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
 }
 
 function Write-Section {
     param([string]$Title)
     Write-Host ""
-    Write-Host "============================================================" -ForegroundColor $Colors.Cyan
-    Write-Host "  $Title" -ForegroundColor $Colors.Cyan
-    Write-Host "============================================================" -ForegroundColor $Colors.Cyan
+    Write-Host "============================================================"
+    Write-Host "  $Title"
+    Write-Host "============================================================"
 }
 
 function Add-Warning {
@@ -63,7 +70,7 @@ function Initialize-Configuration {
     # Load from config file if provided
     if ($ConfigFile) {
         if (-not (Test-Path $ConfigFile)) { 
-            throw "Config file not found: $ConfigFile" 
+            throw "Config file not found: $ConfigFile"
         }
         
         Write-Log "Loading configuration from: $ConfigFile" -Level "INFO"

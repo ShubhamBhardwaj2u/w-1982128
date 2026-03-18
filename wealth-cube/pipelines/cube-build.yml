@@ -14,5 +14,5 @@ resources:
 extends:
   template: templates/cube/build-cube.yml@framework
   parameters:
-    modelPath: 'src/model/Wealth.bim'
+    modelPath: 'src/bin/Wealth.bim'
     artifactName: 'cube-artifact'

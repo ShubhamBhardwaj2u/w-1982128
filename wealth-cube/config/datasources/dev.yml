@@ -1,0 +1,8 @@
+environment: DEV
+
+datasources:
+  - name: EDW_WEALTH_DATAMART
+    server: dev-sql-server.wealth.local
+    database: EDW_WEALTH_DATAMART_DEV
+    impersonationMode: ImpersonateServiceAccount
+

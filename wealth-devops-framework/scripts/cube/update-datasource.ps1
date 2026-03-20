@@ -3,32 +3,39 @@ param(
     [ValidateScript({Test-Path $_ -PathType Leaf})]
     [string]$BimPath,
 
-    [Parameter(Mandatory=$true, HelpMessage="Path to JSON config file with environment settings")]
-    [string]$ConfigFile,
+    [Parameter(Mandatory=$false, HelpMessage="Path to YAML datasource config (like roles/{env}.yml)")]
+    [string]$DatasourcesConfigFile,
 
-    [Parameter(Mandatory=$false, HelpMessage="Target SQL Server hostname")]
+    [Parameter(Mandatory=$false, HelpMessage="Environment (DEV/UAT/PROD) - auto-locate config if not specified")]
+    [ValidateSet("DEV", "UAT", "PROD")]
+    [string]$Environment,
+
+    [Parameter(Mandatory=$false, HelpMessage="Global fallback server (uses config first)")]
     [string]$SqlServer,
 
-    [Parameter(Mandatory=$false, HelpMessage="Target SQL Server database name")]
+    [Parameter(Mandatory=$false, HelpMessage="Global fallback database")]
     [string]$SqlDatabase,
 
-    [Parameter(Mandatory=$false, HelpMessage="Impersonation mode")]
+    [Parameter(Mandatory=$false, HelpMessage="Default impersonation mode")]
     [ValidateSet("ImpersonateServiceAccount", "ImpersonateAnonymous", "ImpersonateWindowsUser", "ImpersonateCustom")]
     [string]$ImpersonationMode = "ImpersonateServiceAccount",
 
-    [Parameter(Mandatory=$false, HelpMessage="Custom account for ImpersonateCustom mode")]
+    [Parameter(Mandatory=$false, HelpMessage="Custom account for ImpersonateCustom")]
     [string]$CustomImpersonationAccount,
 
-    [Parameter(Mandatory=$false, HelpMessage="Create backup before modifying")]
-    [switch]$Backup,
+    [Parameter(Mandatory=$false, HelpMessage="Strict mode - fail on DS/partition mismatches")]
+    [switch]$StrictMode,
 
-    [Parameter(Mandatory=$false, HelpMessage="Show what would be changed")]
-    [switch]$WhatIf
+    [Parameter(Mandatory=$false, HelpMessage="Dry run - validate + preview only")]
+    [switch]$DryRun,
+
+    [Parameter(Mandatory=$false, HelpMessage="Create timestamped backup")]
+    [switch]$Backup
 )
 
 $ErrorActionPreference = "Stop"
-$script:ChangesMade = 0
-$script:Warnings = @()
+$script:ValidationErrors = @()
+$script:ChangesPreview = @()
 
 $Colors = @{
     Red = [ConsoleColor]::Red
@@ -60,6 +67,64 @@ function Write-Section {
     Write-Host "============================================================"
 }
 
+function Add-ValidationError {
+    param([string]$Message)
+    $script:ValidationErrors += $Message
+    Write-Log $Message "ERROR"
+}
+
+function Test-YamlStructure {
+    param([string]$Path, [string]$ExpectedEnv = $null)
+    
+    Write-Section "YAML Configuration Validation"
+    
+    try {
+        Import-Module powershell-yaml -ErrorAction Stop -Force
+        
+        $yamlData = Get-Content $Path -Raw | ConvertFrom-Yaml
+        
+        if ($ExpectedEnv -and $yamlData.environment -ne $ExpectedEnv) {
+            Add-ValidationError "Environment mismatch: '$($yamlData.environment)' expected '$ExpectedEnv'"
+            return $false
+        }
+        
+        $datasources = $yamlData.datasources
+        if (-not $datasources -or $datasources.Count -eq 0) {
+            Add-ValidationError "No datasources defined in $Path"
+            return $false
+        }
+        
+        $dsNames = $datasources | ForEach-Object name
+        $duplicates = $dsNames | Group-Object | Where-Object Count -gt 1
+        if ($duplicates) {
+            Add-ValidationError "Duplicate datasource names: $($duplicates.name -join ', ')"
+            return $false
+        }
+        
+        foreach ($ds in $datasources) {
+            if (-not $ds.name -or -not $ds.server -or -not $ds.database) {
+                Add-ValidationError "Invalid datasource '$($ds.name)': missing name/server/database"
+                return $false
+            }
+        }
+        
+        Write-Log "Configuration validated ($($datasources.Count) datasources)" "SUCCESS"
+        return $yamlData
+    }
+    catch {
+        Add-ValidationError "YAML parse error: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Write-Section {
+    param([string]$Title)
+    Write-Host ""
+    Write-Host "============================================================"
+    Write-Host "  $Title"
+    Write-Host "============================================================"
+}
+
 function Add-Warning {
     param([string]$Message)
     $script:Warnings += $Message
@@ -67,37 +132,26 @@ function Add-Warning {
 }
 
 function Initialize-Configuration {
-    # Load from config file if provided
-    if ($ConfigFile) {
-        if (-not (Test-Path $ConfigFile)) { 
-            throw "Config file not found: $ConfigFile"
-        }
-        
-        Write-Log "Loading configuration from: $ConfigFile" -Level "INFO"
-        $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
-        
-        # Use config values if not provided via command line
-        if ($config.PSObject.Properties.Name -contains "sqlServer") {
-            if (-not $SqlServer -and $config.sqlServer) { 
-                $script:SqlServer = $config.sqlServer 
-            }
-        }
-        if ($config.PSObject.Properties.Name -contains "sqlDatabase") {
-            if (-not $SqlDatabase -and $config.sqlDatabase) { 
-                $script:SqlDatabase = $config.sqlDatabase 
-            }
+    Write-Section "Configuration Loading"
+    
+    # Auto-locate config if Environment specified
+    if ($Environment -and -not $DatasourcesConfigFile) {
+        $autoConfig = "wealth-cube/config/datasources/${Environment}.yml"
+        if (Test-Path $autoConfig) {
+            $DatasourcesConfigFile = $autoConfig
+            Write-Log "Auto-located config: $DatasourcesConfigFile" "INFO"
         }
     }
     
-    # Validate required parameters
-    if (-not $script:SqlServer) { 
-        throw "SqlServer is required. Provide via -SqlServer parameter or in ConfigFile." 
-    }
-    if (-not $script:SqlDatabase) { 
-        throw "SqlDatabase is required. Provide via -SqlDatabase parameter or in ConfigFile." 
+    # Load YAML config (priority: param > auto-locate)
+    if ($DatasourcesConfigFile) {
+        $yamlData = Test-YamlStructure $DatasourcesConfigFile $Environment
+        if (-not $yamlData) { exit 1 }
+        $script:YamlDatasources = $yamlData.datasources
+        Write-Log "Loaded $($script:YamlDatasources.Count) datasource configs" "SUCCESS"
     }
     
-    Write-Log "Input validation passed" -Level "SUCCESS"
+    Write-Log "BIM: $BimPath | Environment: $Environment | Config: $DatasourcesConfigFile" "INFO"
 }
 
 function Update-ConnectionString {
@@ -149,37 +203,106 @@ $json = Get-Content $BimPath -Raw
 $bim = $json | ConvertFrom-Json
 Write-Log "Model loaded: $($bim.name)" -Level "SUCCESS"
 
-Write-Section "Updating Data Sources"
+Write-Section "Datasource Sync Validation & Update"
 
 if ($null -eq $bim.model.dataSources -or $bim.model.dataSources.Count -eq 0) {
-    Add-Warning "No datasources found in model"
+    Add-ValidationError "BIM model has no datasources"
+    exit 1
 }
-else {
-    Write-Log "Found $($bim.model.dataSources.Count) datasource(s)" -Level "INFO"
+
+Write-Log "Found $($bim.model.dataSources.Count) datasource(s) in BIM" "INFO"
+
+# Validate BIM datasources against YAML config (if provided)
+$bimDsNames = $bim.model.dataSources | ForEach-Object name
+if ($script:YamlDatasources) {
+    $yamlDsNames = $script:YamlDatasources | ForEach-Object name
     
-    foreach ($ds in $bim.model.dataSources) {
-        Write-Host "Processing datasource: $($ds.name)" -ForegroundColor $Colors.White
-        
-        $oldConnection = $ds.connectionString
-        
-        if ($WhatIf) {
-            Write-Host "  [WHATIF] Would update: $($ds.name)" -ForegroundColor $Colors.Yellow
-            Write-Host "    Server: $script:SqlServer" -ForegroundColor $Colors.Yellow
-            Write-Host "    Database: $script:SqlDatabase" -ForegroundColor $Colors.Yellow
-        }
-        else {
-            if ($ds.connectionString) {
-                $newConnection = Update-ConnectionString -ConnectionString $ds.connectionString -Server $script:SqlServer -Database $script:SqlDatabase
-                $ds.connectionString = $newConnection
+    $missingInBim = $yamlDsNames | Where { $_ -notin $bimDsNames }
+    if ($missingInBim) {
+        Add-ValidationError "Datasources missing in BIM: $($missingInBim -join ', ')"
+        if ($StrictMode) { exit 1 }
+    }
+    
+    $extraInBim = $bimDsNames | Where { $_ -notin $yamlDsNames }
+    if ($extraInBim -and $StrictMode) {
+        Add-ValidationError "Extra datasources in BIM: $($extraInBim -join ', ')"
+        exit 1
+    } elseif ($extraInBim) {
+        Write-Log "Extra datasources in BIM (non-strict): $($extraInBim -join ', ')" "WARNING"
+    }
+    
+    Write-Log "Datasources validated against config" "SUCCESS"
+}
+
+# Collect partition DS references for validation
+$partitionDsRefs = @{}
+foreach ($table in $bim.model.tables) {
+    foreach ($partition in $table.partitions) {
+        if ($partition.source.dataSource) {
+            $dsName = $partition.source.dataSource
+            if (-not $partitionDsRefs.ContainsKey($dsName)) {
+                $partitionDsRefs[$dsName] = 0
             }
-            $ds.impersonationMode = $ImpersonationMode
-            if ($ImpersonationMode -eq "ImpersonateCustom" -and $CustomImpersonationAccount) {
-                $ds.account = $CustomImpersonationAccount
-            }
-            $script:ChangesMade++
+            $partitionDsRefs[$dsName]++
         }
     }
 }
+Write-Log "Partition DS references validated ($($partitionDsRefs.Count) unique)" "SUCCESS"
+
+if ($script:ValidationErrors.Count -gt 0) { exit 1 }
+
+# Update datasources
+foreach ($ds in $bim.model.dataSources) {
+    Write-Host "  Processing: $($ds.name)" -ForegroundColor Cyan
+    
+    $yamlDs = $null
+    if ($script:YamlDatasources) {
+        $yamlDs = $script:YamlDatasources | Where-Object { $_.name -eq $ds.name }
+    }
+    
+    $targetServer = if ($yamlDs -and $yamlDs.server) { $yamlDs.server } else { $SqlServer }
+    $targetDb = if ($yamlDs -and $yamlDs.database) { $yamlDs.database } else { $SqlDatabase }
+    $targetImpersonation = if ($yamlDs -and $yamlDs.impersonationMode) { $yamlDs.impersonationMode } else { $ImpersonationMode }
+    
+    if (-not $targetServer -or -not $targetDb) {
+        Add-Warning "No config for DS '$($ds.name)' - skipping"
+        continue
+    }
+    
+    $oldConn = $ds.connectionString
+    $oldImpersonation = $ds.impersonationMode
+    
+    if ($DryRun) {
+        Write-Host "    Old -> New:" -ForegroundColor Yellow
+        Write-Host "      Server: Extracted -> $targetServer" -ForegroundColor Yellow
+        Write-Host "      DB: Extracted -> $targetDb" -ForegroundColor Yellow
+        Write-Host "      Impersonation: $oldImpersonation -> $targetImpersonation" -ForegroundColor Yellow
+        $script:ChangesPreview += "DS '$($ds.name)': Conn updated + Impersonation sync"
+        continue
+    }
+    
+    # Apply updates
+    if ($ds.connectionString) {
+        $newConn = Update-ConnectionString -ConnectionString $ds.connectionString -Server $targetServer -Database $targetDb
+        if ($newConn -ne $oldConn) {
+            $ds.connectionString = $newConn
+            Write-Log "  Updated connection for '$($ds.name)'" "SUCCESS"
+        }
+    }
+    
+    if ($ds.impersonationMode -ne $targetImpersonation) {
+        $ds.impersonationMode = $targetImpersonation
+        if ($targetImpersonation -eq "ImpersonateCustom" -and $yamlDs.account) {
+            $ds.account = $yamlDs.account
+        }
+        Write-Log "  Updated impersonation for '$($ds.name)'" "SUCCESS"
+    }
+    
+    $script:ChangesMade++
+}
+
+Write-Log "Datasources processed ($($bim.model.dataSources.Count))" "SUCCESS"
+
 
 if (-not $WhatIf) {
     Write-Section "Saving Updated Model"

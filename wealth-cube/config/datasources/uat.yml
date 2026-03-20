@@ -1,0 +1,9 @@
+environment: UAT
+
+datasources:
+  - name: EDW_WEALTH_DATAMART
+    server: uat-sql-server.wealth.local
+    database: EDW_WEALTH_DATAMART_UAT
+    impersonationMode: ImpersonateServiceAccount
+
+ 

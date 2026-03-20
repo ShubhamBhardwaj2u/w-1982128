@@ -163,7 +163,7 @@ function Sync-RoleMembers {
             continue
         }
         
-        $role.members = $yamlRole.members | ForEach-Object { @{ memberName = $_ } }
+        $role.members = @($yamlRole.members | ForEach-Object { @{ memberName = $_ } })
         Write-Host "  $($yamlRole.name): $oldCount (old) --> $($yamlRole.members.Count) (New)" -ForegroundColor Cyan
         # Write-Log "Members Synced '$($yamlRole.name)'" "SUCCESS"
     }

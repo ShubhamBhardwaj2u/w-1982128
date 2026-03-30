@@ -1,0 +1,87 @@
+# PowerShell / Windows
+*.ps1~  
+*.swp
+.PSReadLine
+PowerShell_editor
+PowerShell ISE
+PSReadLine
+VSCodeVFS/
+
+# Logs
+*.log
+*.log.*
+logs/
+
+# Build artifacts
+bin/
+obj/
+*.bim.backup
+*.backup.*
+test-*.bim
+test-*.yml
+
+# YAML configs (environment specific)
+config/datasources/dev.yml
+config/datasources/uat.yml
+config/datasources/prod.yml
+config/roles/dev.yml
+config/roles/uat.yml
+config/roles/prod.yml
+
+# Secrets
+*.key
+*.pem
+*.pub
+!.gitignore
+secrets/
+.env*
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/**/*.code-snippets
+.vscode/ipch
+.vscode/vscode-env
+!.vscode/extensions.json
+.vscode-test
+
+# VS
+.vs/
+.vscode-test/
+.vscode
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Pipenv
+pipenv
+Pipfile.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Docker
+.dockerignore
+
+# Misc
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

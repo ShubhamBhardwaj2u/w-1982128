@@ -2,9 +2,6 @@ environment: DEV
 
 datasources:
   - name: EDW_WEALTH_DATAMART
-    server: dev-sql-server.wealth.local
-    database: EDW_WEALTH_DATAMART_DEV
-  - name: SECOND_DATAMART
-    server: dev-second-server.wealth.local
-    database: SECOND_DB_DEV
+    server: DWDAO01DMDDLS1
+    database: EDW_WEALTH_DATAMART
 

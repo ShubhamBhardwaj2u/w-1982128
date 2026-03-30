@@ -1,11 +1,4 @@
 # YAML Template: Cube Deployment Pipeline
-# Purpose: Deploys SSAS Tabular model to on-premises SSAS server
-# Usage: Include this template in Azure DevOps release pipeline
-#
-# PREREQUISITES:
-# 1. Create Variable Groups in Azure DevOps Library (see docs/azure-devops-setup.md)
-# 2. Link Azure KeyVault for secrets in the pipeline
-# 3. See docs/azure-devops-setup.md for detailed setup instructions
 
 parameters:
   # Deployment targets
@@ -128,28 +121,3 @@ stages:
                       -BackupBeforeDeploy:$${{ parameters.backupBeforeDeploy }}
                       -WhatIf:$${{ parameters.whatIf }}
                     pwsh: false
-
-# ============================================================
-# EXAMPLE USAGE:
-# ============================================================
-# In your release pipeline:
-#
-# variables:
-#   - group: 'Wealth-Common'
-#   - group: 'Wealth-DEV'
-#
-# stages:
-#   - template: templates/cube/deploy-cube.yml
-#     parameters:
-#       environmentName: DEV
-#       processType: Full
-#
-# IMPORTANT: Link KeyVault in pipeline for secrets:
-#   - task: AzureKeyVault@2
-#     inputs:
-#       azureSubscription: 'your-subscription'
-#       KeyVaultName: 'wealth-kv'
-#       SecretsFilter: '*'
-#
-# See docs/azure-devops-setup.md for complete setup.
-

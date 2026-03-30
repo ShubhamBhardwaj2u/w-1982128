@@ -2,6 +2,6 @@ environment: PROD
 
 datasources:
   - name: EDW_WEALTH_DATAMART
-    server: prod-sql-server.wealth.local
+    server: PWDAO01DMDDLS1
     database: EDW_WEALTH_DATAMART
 

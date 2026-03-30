@@ -4,13 +4,33 @@ pr:
       - develop
       - main
 
+trigger: none
+
 resources:
   repositories:
-  - repository: framework
-    type: git
-    name: wealth-devops-framework
+    - repository: framework
+      type: git
+      name: wealth-devops-framework
+      ref: refs/heads/main
 
-extends:
-  template: templates/cube/validate-cube.yml@framework
-  parameters:
-    modelPath: 'src/bin/Wealth.bim'
+stages:
+
+ # UAT (PR -> develop)
+- stage: Validate_UAT
+  displayName: Validate (UAT)
+  condition: eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/develop')
+  jobs:
+  - template: templates/cube/validate-cube.yml@framework
+    parameters:
+      poolName: 'Wealth-Agent-Pool'
+      variableGroup: 'Wealth-UAT'
+
+  # PROD (PR -> main)
+- stage: Validate_PROD
+  displayName: Validate (PROD)
+  condition: eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/main')
+  jobs:
+  - template: templates/cube/validate-cube.yml@framework
+    parameters:
+      poolName: 'Wealth-Agent-Pool'
+      variableGroup: 'Wealth-PROD'

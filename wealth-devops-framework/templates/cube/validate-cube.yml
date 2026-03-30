@@ -1,13 +1,55 @@
 parameters:
-  modelPath: ''
+- name: poolName
+  type: string
 
-steps:
+- name: variableGroup
+  type: string
 
-- checkout: self
+jobs:
+- job: Validate
+  displayName: Validate Cube
 
-- task: PowerShell@2
-  displayName: Validate Tabular Model
-  inputs:
-    targetType: 'filePath'
-    filePath: 'scripts/cube/validate-model.ps1'
-    arguments: '-ModelPath ${{ parameters.modelPath }}'
+  pool:
+    name: ${{ parameters.poolName }}
+
+  variables:
+    - group: ${{ parameters.variableGroup }}
+
+  steps:
+  - checkout: self
+    path: project-repo
+
+  - checkout: framework
+    path: devops-framework
+
+  #  Debug
+  - script: |
+      echo "Target Branch: $(System.PullRequest.TargetBranch)"
+      echo "Environment: $(Environment)"
+      echo "ModelPath: $(ModelPath)"
+      echo "RolesConfig: $(RolesConfigPath)"
+    displayName: Debug Environment
+
+  #  Validate Model
+  - task: PowerShell@2
+    displayName: Validate Model
+    inputs:
+      pwsh: true
+      targetType: filePath
+      filePath: $(Pipeline.Workspace)/devops-framework/scripts/cube/validate-model.ps1
+      arguments: >
+        -ModelPath "$(Pipeline.Workspace)/project-repo/$(ModelPath)"
+
+  #  Validate Roles
+  - task: PowerShell@2
+    displayName: Validate Roles (DryRun)
+    inputs:
+      pwsh: true
+      targetType: filePath
+      filePath: $(Pipeline.Workspace)/devops-framework/scripts/cube/update-roles.ps1
+      arguments: >
+        -BimPath "$(Pipeline.Workspace)/project-repo/$(ModelPath)"
+        -Environment "$(Environment)"
+        -RolesConfigFile "$(Pipeline.Workspace)/project-repo/$(RolesConfigPath)"
+        -DryRun
+      # -ValidateAD   # commented for now

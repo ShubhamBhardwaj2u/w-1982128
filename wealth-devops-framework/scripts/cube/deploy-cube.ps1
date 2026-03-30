@@ -1,51 +1,3 @@
-<#
-.SYNOPSIS
-    Deploys SSAS Tabular model to on-premises SSAS server using TOM.
-.DESCRIPTION
-    Deploys a .bim file to SSAS Tabular server with options for:
-    - Database creation or update
-    - Datasource updates for target environment
-    - Role/security updates
-    - Processing (Full, Default, None)
-    - Transactional deployment with rollback
-    
-.PARAMETER BimPath
-    Path to the .bim file to deploy.
-.PARAMETER SsasServer
-    SSAS server hostname or instance (e.g., "localhost" or "Server\Instance").
-.PARAMETER DatabaseName
-    Target database name on SSAS server.
-.PARAMETER SqlServer
-    SQL Server for datasource connection (optional - uses update-datasource.ps1).
-.PARAMETER SqlDatabase
-    SQL Database for datasource connection (optional).
-.PARAMETER ConfigFile
-    Path to JSON configuration file with all environment settings.
-.PARAMETER ProcessType
-    Type of processing after deployment: None, Full, Default, DataOnly, Calculate (default: None).
-.PARAMETER CreateDatabaseIfNotExists
-    Create database if it doesn't exist (default: $true).
-.PARAMETER UpdateRoles
-    Update roles based on environment configuration (requires -RolesConfigFile).
-.PARAMETER RolesConfigFile
-    Path to JSON file with role-to-AD-group mappings.
-.PARAMETER TomDllPath
-    Custom path to TOM DLL (overrides auto-detection).
-.PARAMETER BackupBeforeDeploy
-    Create backup of existing database before deployment (requires SSMS).
-.PARAMETER MaxParallelConnections
-    Maximum parallel connections for processing (default: 4).
-.PARAMETER TimeoutSeconds
-    Timeout for deployment operations in seconds (default: 600).
-.PARAMETER VerboseLogging
-    Enable verbose debug output.
-.PARAMETER WhatIf
-    Show what would happen without making actual changes.
-.EXAMPLE
-    .\deploy-cube.ps1 -BimPath ".\Wealth.bim" -SsasServer "localhost" -DatabaseName "Wealth_DEV" -ProcessType "Full"
-.EXAMPLE
-    .\deploy-cube.ps1 -BimPath ".\Wealth.bim" -ConfigFile ".\config\prod.json" -ProcessType "Full"
-#>
 
 param(
     [Parameter(Mandatory=$false)]
@@ -519,9 +471,9 @@ function Update-RoleMemberships {
 # ============================================================
 
 Write-Host ""
-Write-Host "╔═══════════════════════════════════════════════════════════╗" -ForegroundColor $Colors.Cyan
-Write-Host "║       SSAS Tabular Deployment Tool v2.0                    ║" -ForegroundColor $Colors.Cyan
-Write-Host "╚═══════════════════════════════════════════════════════════╝" -ForegroundColor $Colors.Cyan
+Write-Host " -------------------------------------------------------------"
+Write-Host "       SSAS Tabular Deployment Tool                       "
+Write-Host " -------------------------------------------------------------"
 
 Write-Log "Deployment started at: $script:DeploymentStartTime"
 

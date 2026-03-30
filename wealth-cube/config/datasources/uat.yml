@@ -2,7 +2,7 @@ environment: UAT
 
 datasources:
   - name: EDW_WEALTH_DATAMART
-    server: uat-sql-server.wealth.local
-    database: EDW_WEALTH_DATAMART_UAT
+    server: UWDAO01DMDDLS1
+    database: EDW_WEALTH_DATAMART
 
  

@@ -1,6 +1,4 @@
 # YAML Template: Cube Build Pipeline
-# Purpose: Validates and builds SSAS Tabular model artifact for deployment
-# Usage: Include this template in azure-pipelines.yml in wealth-cube repository
 
 parameters:
   # Model configuration

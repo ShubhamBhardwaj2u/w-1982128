@@ -5,12 +5,12 @@ param(
 
     [Parameter(Mandatory=$true, Position=1)]
     [ValidateSet("DEV", "UAT", "PROD")]
-    [string]$Environment = "DEV",
+    [string]$Environment,
 
     [Parameter(Mandatory=$true, Position=2)]
     [string]$RolesConfigFile,
 
-    [switch]$StrictMode,
+    [switch]$ValidateAD,
     [switch]$DryRun
 )
 
@@ -114,11 +114,6 @@ function Test-BimRoleSync {
     param($BimModel, [array]$YamlRoles)
     
     Write-Section "Role Sync Validation"
-    
-    if (-not $bimModel.roles) {
-        Add-ValidationError "BIM has no roles"
-        exit 1
-    }
 
     $bimNames = $BimModel.roles | ForEach-Object name
     $yamlNames = $YamlRoles | ForEach-Object name
@@ -131,11 +126,9 @@ function Test-BimRoleSync {
         return $false
     }
     
-    if ($StrictMode -and $extra) {
+    if ($extra) {
         Add-ValidationError "Extra Roles in BIM: $($extra -join ', ')"
         return $false
-    } elseif ($extra) {
-        Write-Log "Extra Roles in BIM: $($extra -join ', ')" "WARNING"
     }
     
     Write-Log "Roles are in sync" "SUCCESS"
@@ -171,6 +164,57 @@ function Sync-RoleMembers {
     Write-Log "Members synchronized" "SUCCESS"
 }
 
+function Test-ADGroups {
+    param([array]$YamlRoles)
+
+    if (-not $ValidateAD) {
+        Write-Log "AD validation skipped" "WARNING"
+        return $true
+    }
+
+    Write-Section "Active Directory Validation"
+
+    try {
+        Import-Module ActiveDirectory -ErrorAction Stop
+    } catch {
+        Add-ValidationError "ActiveDirectory module not available. Install RSAT tools."
+        return $false
+    }
+
+    $invalidGroups = @()
+
+    foreach ($role in $YamlRoles) {
+        foreach ($member in $role.members) {
+
+            $parts = $member.Split('\')
+            if ($parts.Count -ne 2) {
+                Add-ValidationError "Invalid member format '$member'"
+                continue
+            }
+
+            $domain = $parts[0]
+            $groupName = $parts[1]
+
+            try {
+                $adGroup = Get-ADGroup -Identity $groupName -ErrorAction Stop
+                Write-Log "Validated: $member" "INFO"
+            }
+            catch {
+                Add-ValidationError "AD Group NOT found: $member"
+                $invalidGroups += $member
+            }
+        }
+    }
+
+    if ($invalidGroups.Count -gt 0) {
+        Write-Log "Invalid AD Groups found: $($invalidGroups -join ', ')" "ERROR"
+        return $false
+    }
+
+    Write-Log "All AD groups validated successfully" "SUCCESS"
+    return $true
+}
+
 # MAIN
 #-----------------------------------------------------
 Write-Section "SSAS Tabular Role Synchronizer"
@@ -183,23 +227,30 @@ if (-not $RolesConfigFile) {
 
 Write-Log "BIM: $BimPath"
 Write-Log "YAML: $RolesConfigFile"
-Write-Log "Strict: $StrictMode"
 
 if ($DryRun) {
     Write-Log "*** DRY RUN MODE ***" "WARNING"
 }
 
-# 1. YAML
+# 1. YAML file validation
 $yamlData = Test-YamlStructure $RolesConfigFile $Environment
 if (-not $yamlData) { exit 1 }
 $config = $yamlData.config
 $yamlRoles = $yamlData.roles
 
-# 2. BIM
+if (-not (Test-ADGroups $yamlRoles)) { exit 1 }
+
+# 2. BIM file validation
 $bimRaw = Get-Content $BimPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $bimModel = $bimRaw.model
 
+if (-not $bimModel.roles) {
+    Add-ValidationError "BIM has no roles"
+    exit 1
+}
+
 Write-Log "BIM file Validated ($($bimModel.roles.Count) roles)" "SUCCESS"
+ 
 
 # 3. Sync check
 if (-not (Test-BimRoleSync $bimModel $yamlRoles)) { exit 1 }

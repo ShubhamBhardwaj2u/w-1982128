@@ -1,15 +1,14 @@
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory=$true, Position=0)]
     [string]$BimPath,
 
-    [Parameter(Mandatory=$true)]
-    [string]$DatasourcesConfigFile,
-
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory=$true, Position=1)]
     [ValidateSet("DEV", "UAT", "PROD")]
     [string]$Environment,
 
-    [switch]$StrictMode,
+    [Parameter(Mandatory=$true, Position=2)]
+    [string]$DatasourcesConfigFile,
+
     [switch]$DryRun
 )
 
@@ -76,7 +75,7 @@ function Test-YamlStructure {
         
         $yamlData = Get-Content $Path -Raw | ConvertFrom-Yaml
         
-        if ($ExpectedEnv -and $yamlData.environment -ne $ExpectedEnv) {
+        if ($yamlData.environment -ne $ExpectedEnv) {
             Add-ValidationError "Environment mismatch: '$($yamlData.environment)' expected '$ExpectedEnv'"
             return $false
         }
@@ -138,13 +137,13 @@ function Initialize-Configuration {
         Add-ValidationError "Datasources config file not found: $DatasourcesConfigFile"
     }
     if (-not (Test-Path $BimPath)) {
-        Add-ValidationError "BIM file not found: $BimPath"
+        Add-ValidationError "Unable to locate BIM file: $BimPath"
     }
-    if ($script:ValidationErrors.Count -gt 0) {
+    if ($script:ValidationErrors.Count -gt 0) { 
         exit 1
     }
     
-    # Load YAML config (priority: param > auto-locate)
+    # Load YAML config and validate structure
     if ($DatasourcesConfigFile) {
         $yamlData = Test-YamlStructure $DatasourcesConfigFile $Environment
         if (-not $yamlData) { exit 1 }
@@ -254,7 +253,7 @@ function Save-Bim {
     Write-Section "Saving Updated BIM"
 
     try {
-        $BimModel | ConvertTo-Json -Depth 200 | Set-Content -Path $BimPath -Encoding UTF8 -NoNewline
+        $BimModel | ConvertTo-Json -Depth 50 | Set-Content -Path $BimPath -Encoding UTF8 -NoNewline
         Write-Log "BIM file updated successfully: $BimPath" "SUCCESS"
     }
     catch {
@@ -265,14 +264,14 @@ function Save-Bim {
 
 
 Write-Host ""
-Write-Host "============================================================" -ForegroundColor $script:Colors.Cyan
-Write-Host "  SSAS Datasource Update Tool v3.0" -ForegroundColor $script:Colors.Cyan
-Write-Host "============================================================" -ForegroundColor $script:Colors.Cyan
+Write-Host "============================================================"
+Write-Host "  SSAS Datasource Update Tool"
+Write-Host "============================================================"
 
 #initialize YAML Module
 Initialize-YamlModule
 
-# Initialize configuration (loads from config file if provided)
+# Initialize configuration (loads from config file and validates yml)
 Initialize-Configuration
 
 Write-Section "Loading BIM Model"
@@ -297,7 +296,7 @@ Write-Section "Datasource Sync Validation & Update"
 
 Write-Log "Found $($bim.model.dataSources.Count) datasource(s) in BIM" "INFO"
 
-# Validate BIM datasources against YAML config (if provided)
+# Validate BIM datasources against YAML config
 $bimDsNames = @($bim.model.dataSources | ForEach-Object { $_.name.Trim() })
 Write-Section "Datasource Sync Validation"
 
@@ -321,12 +320,8 @@ if ($missingInBim) {
 
 $extraInBim = $bimDsNames | Where-Object { $_.ToLower() -notin $yamlDsNamesLower }
 if ($extraInBim) {
-    $msg = "Extra datasources in BIM: $($extraInBim -join ', ')"
-    if ($StrictMode) {
-        Add-ValidationError $msg
-    } else {
-        Add-Warning $msg
-    }
+    Add-ValidationError "Extra datasources in BIM: $($extraInBim -join ', ')"
+    
 }
 
 if ($script:ValidationErrors.Count -gt 0) { exit 1 }

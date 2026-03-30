@@ -4,10 +4,7 @@ param(
     [string]$ModelPath,
 
     [Parameter(Mandatory=$false)]
-    [switch]$StrictMode,
-
-    [Parameter(Mandatory=$false)]
-    [int]$MaxSizeMB = 100
+    [switch]$StrictMode
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,9 +42,9 @@ function Write-Log {
 function Write-Section {
     param([string]$Title)
     Write-Host ""
-    Write-Host "============================================================" -ForegroundColor $Colors.Cyan
-    Write-Host "  $Title" -ForegroundColor $Colors.Cyan
-    Write-Host "============================================================" -ForegroundColor $Colors.Cyan
+    Write-Host "============================================================"
+    Write-Host "  $Title"
+    Write-Host "============================================================"
 }
 
 function Add-ValidationError {
@@ -127,8 +124,14 @@ function Test-CompatibilityLevel {
     $validLevels = @(1200, 1400, 1500, 1600)
     
     if ($Level -notin $validLevels) {
-        Add-ValidationError "Invalid compatibility level: $Level. Valid levels: $($validLevels -join ', ')"
+        Add-ValidationWarning "Invalid compatibility level: $Level. Valid levels: $($validLevels -join ', ')"
         return $false
+
+        Add-ValidationWarning "Model has no tables defined"
+        if ($StrictMode) {
+            Add-ValidationError "Strict mode: Model must be compatible with level: $Level. Valid levels: $($validLevels -join ', ')"
+            return $false
+        }
     }
     
     $levelDescription = switch ($Level) {
@@ -142,8 +145,6 @@ function Test-CompatibilityLevel {
     Write-Log "Compatibility Level: $Level ($levelDescription)" -Level "SUCCESS"
     return $true
 }
-
-
 
 function Test-RequiredObjects {
     param([hashtable]$Model)
@@ -313,12 +314,11 @@ function Test-Relationships {
 }
 
 Write-Host ""
-Write-Host "============================================================" -ForegroundColor $Colors.Cyan
-Write-Host "  SSAS Tabular Model Validation Tool v2.0" -ForegroundColor $Colors.Cyan
-Write-Host "============================================================" -ForegroundColor $Colors.Cyan
+Write-Host "============================================================"
+Write-Host "  SSAS Tabular Model Validation"
+Write-Host "============================================================"
 Write-Log "Starting validation for: $ModelPath"
 Write-Log "Strict Mode: $StrictMode"
-Write-Log "Max Size: $MaxSizeMB MB"
 
 if (-not (Test-Path $ModelPath)) {
     Write-Log "Model file not found: $ModelPath" -Level "ERROR"
@@ -349,8 +349,6 @@ if ($allPassed) {
     if (-not (Test-CompatibilityLevel -Level $modelJson.compatibilityLevel)) {
         $allPassed = $false
     }
-    
-
     
     if (-not (Test-RequiredObjects -Model $modelHash)) {
         $allPassed = $false

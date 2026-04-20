@@ -1,48 +1,35 @@
-
 param(
-    [Parameter(Mandatory=$false)]
-    [ValidateScript({Test-Path $_ -PathType Leaf})]
+    [Parameter(Mandatory=$true)]
+    [ValidateScript({ Test-Path $_ -PathType Leaf })]
     [string]$BimPath,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$true)]
+    [ValidateSet("DEV", "UAT", "PROD")]
+    [string]$Environment,
+
+    [Parameter(Mandatory=$true)]
     [string]$SsasServer,
 
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$true)]
     [string]$DatabaseName,
 
-    [Parameter(Mandatory=$false)]
-    [string]$ConfigFile,
+    [Parameter(Mandatory=$true)]
+    [ValidateScript({ Test-Path $_ -PathType Leaf })]
+    [string]$DatasourcesConfigFile,
 
-    [Parameter(Mandatory=$false)]
-    [string]$SqlServer,
-
-    [Parameter(Mandatory=$false)]
-    [string]$SqlDatabase,
-
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory=$true)]
+    [ValidateScript({ Test-Path $_ -PathType Leaf })]
     [string]$RolesConfigFile,
 
     [Parameter(Mandatory=$false)]
     [ValidateSet("None", "Full", "Default", "DataOnly", "Calculate")]
-    [string]$ProcessType = "None",
+    [string]$ProcessType = "Full",
 
     [Parameter(Mandatory=$false)]
     [bool]$CreateDatabaseIfNotExists = $true,
 
     [Parameter(Mandatory=$false)]
-    [bool]$UpdateRoles = $false,
-
-    [Parameter(Mandatory=$false)]
-    [string]$TomDllPath,
-
-    [Parameter(Mandatory=$false)]
-    [switch]$BackupBeforeDeploy,
-
-    [Parameter(Mandatory=$false)]
-    [int]$MaxParallelConnections = 4,
-
-    [Parameter(Mandatory=$false)]
-    [int]$TimeoutSeconds = 600,
+    [string]$WorkingFolder = "",
 
     [Parameter(Mandatory=$false)]
     [switch]$VerboseLogging,
@@ -51,27 +38,25 @@ param(
     [switch]$WhatIf
 )
 
-# Configure error handling
 $ErrorActionPreference = "Stop"
 $script:DeploymentStartTime = Get-Date
 $script:Errors = @()
 $script:Warnings = @()
 $script:ChangesMade = @()
+$script:WorkingBimPath = $null
 
-# Enable verbose if requested
 if ($VerboseLogging) {
     $VerbosePreference = "Continue"
 }
 
-# ANSI color codes
 $Colors = @{
-    Red = [ConsoleColor]::Red
-    Yellow = [ConsoleColor]::Yellow
-    Green = [ConsoleColor]::Green
-    Cyan = [ConsoleColor]::Cyan
-    White = [ConsoleColor]::White
+    Red      = [ConsoleColor]::Red
+    Yellow   = [ConsoleColor]::Yellow
+    Green    = [ConsoleColor]::Green
+    Cyan     = [ConsoleColor]::Cyan
+    White    = [ConsoleColor]::White
     DarkGray = [ConsoleColor]::DarkGray
-    Magenta = [ConsoleColor]::Magenta
+    Magenta  = [ConsoleColor]::Magenta
 }
 
 function Write-Log {
@@ -79,23 +64,24 @@ function Write-Log {
         [string]$Message,
         [string]$Level = "INFO"
     )
-    
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $color = $White
-    
+    $color = $Colors.White
+
     switch ($Level) {
-        "ERROR" { $color = $Colors.Red }
+        "ERROR"   { $color = $Colors.Red }
         "WARNING" { $color = $Colors.Yellow }
         "SUCCESS" { $color = $Colors.Green }
-        "INFO" { $color = $Colors.Cyan }
-        "DEBUG" { $color = $Colors.DarkGray }
+        "INFO"    { $color = $Colors.Cyan }
+        "DEBUG"   { $color = $Colors.DarkGray }
     }
-    
+
     Write-Host "[$timestamp] [$Level] $Message" -ForegroundColor $color
 }
 
 function Write-Section {
     param([string]$Title)
+
     Write-Host ""
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor $Colors.Cyan
     Write-Host "  $Title" -ForegroundColor $Colors.Cyan
@@ -103,7 +89,11 @@ function Write-Section {
 }
 
 function Write-Step {
-    param([string]$Step, [string]$Description)
+    param(
+        [string]$Step,
+        [string]$Description
+    )
+
     Write-Host ""
     Write-Host "── $Step ─────────────────────────────────────────────" -ForegroundColor $Colors.Magenta
     Write-Host "  $Description" -ForegroundColor $Colors.White
@@ -121,134 +111,94 @@ function Add-Warning {
     Write-Log $Message -Level "WARNING"
 }
 
-function Get-TomAssembly {
-    # Try loading from GAC first
-    try {
-        Add-Type -AssemblyName "Microsoft.AnalysisServices.Core" -ErrorAction Stop
-        Add-Type -AssemblyName "Microsoft.AnalysisServices.Tabular" -ErrorAction Stop
-        Write-Log "TOM libraries loaded from GAC" -Level "SUCCESS"
-        return $true
-    }
-    catch {
-        Write-Log "Assemblies not in GAC" -Level "DEBUG"
-    }
-    
-    # Try custom path
-    if ($TomDllPath -and (Test-Path $TomDllPath)) {
-        try {
-            Add-Type -Path $TomDllPath
-            Write-Log "TOM library loaded from custom path: $TomDllPath" -Level "SUCCESS"
-            return $true
-        }
-        catch {
-            Add-Error "Failed to load TOM from custom path: $TomDllPath"
-            return $false
-        }
-    }
-    
-    # Try default paths
+function Initialize-AnalysisServicesLibraries {
     $possiblePaths = @(
-        "C:\Program Files (x86)\Microsoft SQL Server Management Studio 19\Common7\IDE\CommonExtensions\Microsoft\SSIS\160\BIShared\Microsoft.AnalysisServices.Tabular.dll",
-        "C:\Program Files (x86)\Microsoft SQL Server Management Studio 18\Common7\IDE\CommonExtensions\Microsoft\SSIS\150\BIShared\Microsoft.AnalysisServices.Tabular.dll",
-        "C:\Program Files\Microsoft SQL Server\150\SDK\Assemblies\Microsoft.AnalysisServices.Tabular.dll",
-        "C:\Program Files\Microsoft SQL Server\140\SDK\Assemblies\Microsoft.AnalysisServices.Tabular.dll"
+        "C:\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\Microsoft.AnalysisServices.Core.dll",
+        "C:\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\Microsoft.AnalysisServices.Tabular.dll",
+        "C:\Program Files (x86)\Microsoft SQL Server Management Studio 19\Common7\IDE\CommonExtensions\Microsoft\SSIS\160\BIShared\Microsoft.AnalysisServices.Core.dll",
+        "C:\Program Files (x86)\Microsoft SQL Server Management Studio 19\Common7\IDE\CommonExtensions\Microsoft\SSIS\160\BIShared\Microsoft.AnalysisServices.Tabular.dll"
     )
-    
+
+    $loadedCount = 0
+
     foreach ($path in $possiblePaths) {
         if (Test-Path $path) {
             try {
-                Add-Type -Path $path
-                Write-Log "TOM library loaded from: $path" -Level "SUCCESS"
-                return $true
+                Add-Type -Path $path -ErrorAction Stop
+                Write-Log "Loaded library: $path" -Level "SUCCESS"
+                $loadedCount++
             }
             catch {
-                continue
+                Add-Warning "Failed to load library: $path"
             }
         }
     }
-    
-    Add-Error "SSAS Tabular libraries not found. Please install SSMS or specify -TomDllPath"
-    return $false
-}
 
-function Initialize-Configuration {
-    # Load from config file if provided
-    if ($ConfigFile) {
-        if (-not (Test-Path $ConfigFile)) {
-            throw "Config file not found: $ConfigFile"
-        }
-        
-        Write-Log "Loading configuration from: $ConfigFile" -Level "INFO"
-        $config = Get-Content $ConfigFile -Raw | ConvertFrom-Json
-        
-        # Override parameters with config values
-        if ($config.ssasServer -and -not $SsasServer) { $SsasServer = $config.ssasServer }
-        if ($config.databaseName -and -not $DatabaseName) { $DatabaseName = $config.databaseName }
-        if ($config.sqlServer -and -not $SqlServer) { $SqlServer = $config.sqlServer }
-        if ($config.sqlDatabase -and -not $SqlDatabase) { $SqlDatabase = $config.sqlDatabase }
-        if ($config.processType -and -not $ProcessType) { $ProcessType = $config.processType }
-        if ($config.rolesConfigFile -and -not $RolesConfigFile) { $RolesConfigFile = $config.rolesConfigFile }
-        if ($null -ne $config.createDatabaseIfNotExists) { $CreateDatabaseIfNotExists = $config.createDatabaseIfNotExists }
+    if ($loadedCount -lt 2) {
+        Add-Error "Required Analysis Services libraries could not be loaded."
+        return $false
     }
-    
-    # Validate required parameters
-    if (-not $BimPath) {
-        throw "BimPath is required. Provide via -BimPath or config file."
-    }
-    
-    if (-not $SsasServer) {
-        throw "SsasServer is required. Provide via -SsasServer or config file."
-    }
-    
-    if (-not $DatabaseName) {
-        throw "DatabaseName is required. Provide via -DatabaseName or config file."
-    }
-    
-    # Validate paths
-    if (-not (Test-Path $BimPath)) {
-        throw "BIM file not found: $BimPath"
-    }
-    
-    Write-Log "Configuration validated" -Level "SUCCESS"
+
     return $true
 }
 
-function Connect-SsasServer {
-    param([string]$ServerName)
-    
-    $server = New-Object Microsoft.AnalysisServices.Tabular.Server
-    
-    try {
-        Write-Log "Connecting to SSAS server: $ServerName" -Level "INFO"
-        $server.Connect($ServerName)
-        
-        # Verify connection
-        if ($server.Connected) {
-            Write-Log "Connected to SSAS server: $ServerName" -Level "SUCCESS"
-            Write-Log "  Server Mode: $($server.ServerMode)" -Level "INFO"
-            Write-Log "  Version: $($server.Version)" -Level "INFO"
-            return $server
-        }
-        else {
-            throw "Connection established but server not in connected state"
-        }
+function Initialize-Configuration {
+    if ([string]::IsNullOrWhiteSpace($WorkingFolder)) {
+        $WorkingFolder = Join-Path ([System.IO.Path]::GetDirectoryName($BimPath)) "_deployment_work"
     }
-    catch {
-        Add-Error "Failed to connect to SSAS server: $($_.Exception.Message)"
-        throw
+
+    if (-not (Test-Path $WorkingFolder)) {
+        New-Item -Path $WorkingFolder -ItemType Directory -Force | Out-Null
+        Write-Log "Created working folder: $WorkingFolder" -Level "SUCCESS"
+    }
+    else {
+        Write-Log "Using existing working folder: $WorkingFolder" -Level "INFO"
+    }
+
+    $script:WorkingBimPath = Join-Path $WorkingFolder ([System.IO.Path]::GetFileName($BimPath))
+
+    Write-Log "Configuration validated" -Level "SUCCESS"
+}
+
+function Copy-WorkingBim {
+    if ($WhatIf) {
+        Write-Host "[WHATIF] Would copy BIM to working location: $script:WorkingBimPath" -ForegroundColor $Colors.Yellow
+        return
+    }
+
+    Copy-Item -Path $BimPath -Destination $script:WorkingBimPath -Force
+    Write-Log "Working BIM created: $script:WorkingBimPath" -Level "SUCCESS"
+}
+
+function Invoke-ScriptFile {
+    param(
+        [string]$ScriptPath,
+        [string[]]$ArgumentsList
+    )
+
+    if (-not (Test-Path $ScriptPath)) {
+        throw "Script not found: $ScriptPath"
+    }
+
+    Write-Log "Executing script: $ScriptPath" -Level "INFO"
+    Write-Log "Arguments: $($ArgumentsList -join ' ')" -Level "DEBUG"
+
+    & $ScriptPath @ArgumentsList
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Script failed with exit code $LASTEXITCODE : $ScriptPath"
     }
 }
 
 function Get-DatabaseFromBim {
     param([string]$Path)
-    
+
     Write-Log "Deserializing BIM model from: $Path" -Level "INFO"
-    
+
     try {
-        $json = Get-Content $Path -Raw
+        $json = Get-Content $Path -Raw -Encoding UTF8
         $database = [Microsoft.AnalysisServices.Tabular.JsonSerializer]::DeserializeDatabase($json)
-        
-        Write-Log "Model deserialized: $($database.Name)" -Level "SUCCESS"
+        Write-Log "Model deserialized successfully: $($database.Name)" -Level "SUCCESS"
         return $database
     }
     catch {
@@ -262,12 +212,37 @@ function Update-DatabaseIdentity {
         [object]$Database,
         [string]$Name
     )
-    
+
     $Database.Name = $Name
     $Database.ID = $Name
-    
-    Write-Log "Database identity set: $Name" -Level "SUCCESS"
+
+    Write-Log "Database identity set to: $Name" -Level "SUCCESS"
     $script:ChangesMade += "Database identity updated to: $Name"
+}
+
+function Connect-SsasServer {
+    param([string]$ServerName)
+
+    $server = New-Object Microsoft.AnalysisServices.Tabular.Server
+
+    try {
+        Write-Log "Connecting to SSAS server: $ServerName" -Level "INFO"
+        $server.Connect($ServerName)
+
+        if (-not $server.Connected) {
+            throw "Connection established but server not in connected state."
+        }
+
+        Write-Log "Connected to SSAS server: $ServerName" -Level "SUCCESS"
+        Write-Log "Server Version: $($server.Version)" -Level "INFO"
+        Write-Log "Server Edition: $($server.Edition)" -Level "INFO"
+
+        return $server
+    }
+    catch {
+        Add-Error "Failed to connect to SSAS server: $($_.Exception.Message)"
+        throw
+    }
 }
 
 function Invoke-DatabaseDeployment {
@@ -277,56 +252,42 @@ function Invoke-DatabaseDeployment {
         [string]$Name,
         [bool]$CreateIfNotExists
     )
-    
+
     $existingDb = $Server.Databases.FindByName($Name)
-    
+
     if ($null -eq $existingDb) {
-        if ($CreateIfNotExists) {
-            if ($WhatIf) {
-                Write-Host "[WHATIF] Would CREATE new database: $Name" -ForegroundColor $Colors.Yellow
-                return $null
-            }
-            
-            Write-Log "Creating new database: $Name" -Level "INFO"
-            $Server.Databases.Add($Database)
-            
-            try {
-                $Database.Update([Microsoft.AnalysisServices.UpdateOptions]::ExpandFull)
-                Write-Log "Database created successfully: $Name" -Level "SUCCESS"
-                $script:ChangesMade += "Created database: $Name"
-                return $Server.Databases.FindByName($Name)
-            }
-            catch {
-                Add-Error "Failed to create database: $($_.Exception.Message)"
-                throw
-            }
+        if (-not $CreateIfNotExists) {
+            throw "Database '$Name' does not exist and CreateDatabaseIfNotExists is false."
         }
-        else {
-            throw "Database '$Name' does not exist and CreateDatabaseIfNotExists is false"
-        }
-    }
-    else {
+
         if ($WhatIf) {
-            Write-Host "[WHATIF] Would UPDATE existing database: $Name" -ForegroundColor $Colors.Yellow
-            Write-Host "  Existing model has $($existingDb.Model.Tables.Count) tables" -ForegroundColor $Colors.Yellow
-            return $existingDb
+            Write-Host "[WHATIF] Would create database: $Name" -ForegroundColor $Colors.Yellow
+            return $null
         }
-        
-        Write-Log "Updating existing database: $Name" -Level "INFO"
-        
-        try {
-            # Replace model with new one
-            $existingDb.Model = $Database.Model
-            $existingDb.Update([Microsoft.AnalysisServices.UpdateOptions]::ExpandFull)
-            Write-Log "Database updated successfully: $Name" -Level "SUCCESS"
-            $script:ChangesMade += "Updated database: $Name"
-            return $existingDb
-        }
-        catch {
-            Add-Error "Failed to update database: $($_.Exception.Message)"
-            throw
-        }
+
+        Write-Log "Creating new database: $Name" -Level "INFO"
+        $Server.Databases.Add($Database)
+        $Database.Update([Microsoft.AnalysisServices.UpdateOptions]::ExpandFull)
+
+        Write-Log "Database created successfully: $Name" -Level "SUCCESS"
+        $script:ChangesMade += "Created database: $Name"
+
+        return $Server.Databases.FindByName($Name)
     }
+
+    if ($WhatIf) {
+        Write-Host "[WHATIF] Would update existing database: $Name" -ForegroundColor $Colors.Yellow
+        return $existingDb
+    }
+
+    Write-Log "Updating existing database: $Name" -Level "INFO"
+    $existingDb.Model = $Database.Model
+    $existingDb.Update([Microsoft.AnalysisServices.UpdateOptions]::ExpandFull)
+
+    Write-Log "Database updated successfully: $Name" -Level "SUCCESS"
+    $script:ChangesMade += "Updated database: $Name"
+
+    return $Server.Databases.FindByName($Name)
 }
 
 function Invoke-ProcessModel {
@@ -334,34 +295,34 @@ function Invoke-ProcessModel {
         [object]$Database,
         [string]$ProcessType
     )
-    
+
     if ($ProcessType -eq "None") {
         Write-Log "Processing skipped (ProcessType = None)" -Level "INFO"
         return
     }
-    
-    Write-Log "Processing model: $ProcessType" -Level "INFO"
-    
+
     $refreshType = switch ($ProcessType) {
-        "Full" { [Microsoft.AnalysisServices.Tabular.RefreshType]::Full }
-        "Default" { [Microsoft.AnalysisServices.Tabular.RefreshType]::Default }
-        "DataOnly" { [Microsoft.AnalysisServices.Tabular.RefreshType]::DataOnly }
+        "Full"      { [Microsoft.AnalysisServices.Tabular.RefreshType]::Full }
+        "Default"   { [Microsoft.AnalysisServices.Tabular.RefreshType]::Default }
+        "DataOnly"  { [Microsoft.AnalysisServices.Tabular.RefreshType]::DataOnly }
         "Calculate" { [Microsoft.AnalysisServices.Tabular.RefreshType]::Calculate }
-        default { [Microsoft.AnalysisServices.Tabular.RefreshType]::None }
+        default     { [Microsoft.AnalysisServices.Tabular.RefreshType]::None }
     }
-    
+
     if ($WhatIf) {
         Write-Host "[WHATIF] Would process model with: $ProcessType" -ForegroundColor $Colors.Yellow
         return
     }
-    
+
     try {
+        Write-Log "Processing database using: $ProcessType" -Level "INFO"
+
         $Database.Model.RequestRefresh($refreshType)
         $saveResult = $Database.Model.SaveChanges()
-        
+
         $hasErrors = $false
         $hasWarnings = $false
-        
+
         foreach ($xmlaResult in $saveResult.XmlaResults) {
             foreach ($msg in $xmlaResult.Messages) {
                 if ($msg.GetType().Name -eq "XmlaError") {
@@ -374,19 +335,19 @@ function Invoke-ProcessModel {
                 }
             }
         }
-        
+
         if ($hasErrors) {
-            throw "Processing failed with errors"
+            throw "Processing failed with errors."
         }
-        
-        if (-not $hasWarnings) {
-            Write-Log "Processing completed successfully with no warnings" -Level "SUCCESS"
+
+        if ($hasWarnings) {
+            Write-Log "Processing completed with warnings." -Level "WARNING"
         }
         else {
-            Write-Log "Processing completed with warnings" -Level "WARNING"
+            Write-Log "Processing completed successfully." -Level "SUCCESS"
         }
-        
-        $script:ChangesMade += "Processed model: $ProcessType"
+
+        $script:ChangesMade += "Processed database using: $ProcessType"
     }
     catch {
         Add-Error "Processing failed: $($_.Exception.Message)"
@@ -394,85 +355,9 @@ function Invoke-ProcessModel {
     }
 }
 
-function Update-RoleMemberships {
-    param(
-        [object]$Database,
-        [string]$RolesConfigFile
-    )
-    
-    if (-not (Test-Path $RolesConfigFile)) {
-        Add-Warning "Roles config file not found: $RolesConfigFile"
-        return
-    }
-    
-    Write-Log "Loading roles configuration from: $RolesConfigFile" -Level "INFO"
-    
-    try {
-        $rolesConfig = Get-Content $RolesConfigFile -Raw | ConvertFrom-Json
-        
-        $modelRoles = $Database.Model.Roles
-        
-        foreach ($roleConfig in $rolesConfig.roles) {
-            $roleName = $roleConfig.name
-            $role = $modelRoles.Find($roleName)
-            
-            if ($null -eq $role) {
-                if ($WhatIf) {
-                    Write-Host "[WHATIF] Would CREATE role: $roleName" -ForegroundColor $Colors.Yellow
-                    continue
-                }
-                
-                Write-Log "Creating new role: $roleName" -Level "INFO"
-                $newRole = New-Object Microsoft.AnalysisServices.Tabular.ModelRole($Database.Model, $roleName)
-                $newRole.ModelPermission = [Microsoft.AnalysisServices.Tabular.ModelPermission]::Read
-                
-                # Add members
-                if ($roleConfig.members) {
-                    foreach ($member in $roleConfig.members) {
-                        $newRole.Members.Add([Microsoft.AnalysisServices.Tabular.WindowsGroupMember]::new($member))
-                    }
-                }
-                
-                $newRole.Update()
-                $script:ChangesMade += "Created role: $roleName"
-                Write-Log "Role created: $roleName" -Level "SUCCESS"
-            }
-            else {
-                if ($WhatIf) {
-                    Write-Host "[WHATIF] Would UPDATE role: $roleName" -ForegroundColor $Colors.Yellow
-                    continue
-                }
-                
-                Write-Log "Updating existing role: $roleName" -Level "INFO"
-                
-                # Clear existing members
-                $role.Members.Clear()
-                
-                # Add new members
-                if ($roleConfig.members) {
-                    foreach ($member in $roleConfig.members) {
-                        $role.Members.Add([Microsoft.AnalysisServices.Tabular.WindowsGroupMember]::new($member))
-                    }
-                }
-                
-                $role.Update()
-                $script:ChangesMade += "Updated role: $roleName"
-                Write-Log "Role updated: $roleName" -Level "SUCCESS"
-            }
-        }
-    }
-    catch {
-        Add-Warning "Failed to update roles: $($_.Exception.Message)"
-    }
-}
-
-# ============================================================
-# MAIN EXECUTION
-# ============================================================
-
 Write-Host ""
 Write-Host " -------------------------------------------------------------"
-Write-Host "       SSAS Tabular Deployment Tool                       "
+Write-Host "       SSAS Tabular Deployment Tool                           "
 Write-Host " -------------------------------------------------------------"
 
 Write-Log "Deployment started at: $script:DeploymentStartTime"
@@ -481,13 +366,11 @@ if ($WhatIf) {
     Write-Log "WHATIF MODE: No actual changes will be made" -Level "WARNING"
 }
 
-# Step 1: Load TOM libraries
-Write-Step "1" "Loading TOM Libraries"
-if (-not (Get-TomAssembly)) {
+Write-Step "1" "Loading Analysis Services Libraries"
+if (-not (Initialize-AnalysisServicesLibraries)) {
     exit 1
 }
 
-# Step 2: Initialize configuration
 Write-Step "2" "Initializing Configuration"
 try {
     Initialize-Configuration
@@ -497,110 +380,102 @@ catch {
     exit 1
 }
 
-# Display deployment info
 Write-Host ""
 Write-Host "Deployment Configuration:" -ForegroundColor $Colors.Green
 Write-Host "  BIM Path: $BimPath" -ForegroundColor $Colors.White
+Write-Host "  Working BIM Path: $script:WorkingBimPath" -ForegroundColor $Colors.White
+Write-Host "  Environment: $Environment" -ForegroundColor $Colors.White
 Write-Host "  SSAS Server: $SsasServer" -ForegroundColor $Colors.White
 Write-Host "  Database: $DatabaseName" -ForegroundColor $Colors.White
-Write-Host "  SQL Server: $($SqlServer ?? 'Not specified')" -ForegroundColor $Colors.White
-Write-Host "  SQL Database: $($SqlDatabase ?? 'Not specified')" -ForegroundColor $Colors.White
+Write-Host "  Datasource Config: $DatasourcesConfigFile" -ForegroundColor $Colors.White
+Write-Host "  Roles Config: $RolesConfigFile" -ForegroundColor $Colors.White
 Write-Host "  Process Type: $ProcessType" -ForegroundColor $Colors.White
-Write-Host "  Update Roles: $UpdateRoles" -ForegroundColor $Colors.White
 Write-Host "  Create If Not Exists: $CreateDatabaseIfNotExists" -ForegroundColor $Colors.White
 
-# Step 3: Load BIM model
-Write-Step "3" "Loading BIM Model"
-$database = Get-DatabaseFromBim -Path $BimPath
-
-# Update database identity
-Update-DatabaseIdentity -Database $database -Name $DatabaseName
-
-# Step 4: Update datasource (if SQL Server provided)
-if ($SqlServer -and $SqlDatabase) {
-    Write-Step "4" "Updating Datasources"
-    
-    $updateDsScript = "$PSScriptRoot\update-datasource.ps1"
-    
-    if (Test-Path $updateDsScript) {
-        try {
-            if ($WhatIf) {
-                & $updateDsScript -BimPath $BimPath -SqlServer $SqlServer -SqlDatabase $SqlDatabase -WhatIf
-            }
-            else {
-                & $updateDsScript -BimPath $BimPath -SqlServer $SqlServer -SqlDatabase $SqlDatabase
-            }
-            $script:ChangesMade += "Updated datasources"
-        }
-        catch {
-            Add-Warning "Datasource update failed: $($_.Exception.Message)"
-        }
-        
-        # Reload model after datasource update
-        $database = Get-DatabaseFromBim -Path $BimPath
-        Update-DatabaseIdentity -Database $database -Name $DatabaseName
-    }
-    else {
-        Write-Log "update-datasource.ps1 not found, skipping datasource update" -Level "WARNING"
-    }
+Write-Step "3" "Creating Working BIM Copy"
+try {
+    Copy-WorkingBim
 }
-else {
-    Write-Step "4" "Skipping Datasource Update (not configured)"
+catch {
+    Write-Log "Failed to create working BIM: $($_.Exception.Message)" -Level "ERROR"
+    exit 1
 }
 
-# Step 5: Update roles (if enabled)
-if ($UpdateRoles -and $RolesConfigFile) {
-    Write-Step "5" "Updating Role Memberships"
-    
-    # We'll update roles after deployment, so just note it here
-    Write-Log "Roles will be updated after database deployment" -Level "INFO"
+$scriptRoot = $PSScriptRoot
+$updateDatasourceScript = Join-Path $scriptRoot "update-datasource.ps1"
+$updateRolesScript = Join-Path $scriptRoot "update-roles.ps1"
+
+Write-Step "4" "Applying Datasource Configuration"
+try {
+    $args = @(
+        "-BimPath", $script:WorkingBimPath,
+        "-Environment", $Environment,
+        "-DatasourcesConfigFile", $DatasourcesConfigFile
+    )
+
+    if ($WhatIf) { $args += "-DryRun" }
+
+    Invoke-ScriptFile -ScriptPath $updateDatasourceScript -ArgumentsList $args
+    $script:ChangesMade += "Datasource configuration applied"
 }
-else {
-    Write-Step "5" "Skipping Role Update (not configured)"
+catch {
+    Write-Log "Datasource update failed: $($_.Exception.Message)" -Level "ERROR"
+    exit 1
 }
 
-# Step 6: Connect to SSAS server
-Write-Step "6" "Connecting to SSAS Server"
-$server = Connect-SsasServer -ServerName $SsasServer
+Write-Step "5" "Applying Roles Configuration"
+try {
+    $args = @(
+        "-BimPath", $script:WorkingBimPath,
+        "-Environment", $Environment,
+        "-RolesConfigFile", $RolesConfigFile
+    )
+
+    if ($WhatIf) { $args += "-DryRun" }
+
+    Invoke-ScriptFile -ScriptPath $updateRolesScript -ArgumentsList $args
+    $script:ChangesMade += "Role configuration applied"
+}
+catch {
+    Write-Log "Role update failed: $($_.Exception.Message)" -Level "ERROR"
+    exit 1
+}
+
+Write-Step "6" "Loading Updated BIM Model"
+try {
+    $database = Get-DatabaseFromBim -Path $script:WorkingBimPath
+    Update-DatabaseIdentity -Database $database -Name $DatabaseName
+}
+catch {
+    exit 1
+}
+
+Write-Step "7" "Connecting to SSAS Server"
+try {
+    $server = Connect-SsasServer -ServerName $SsasServer
+}
+catch {
+    exit 1
+}
 
 try {
-    # Step 7: Deploy database
-    Write-Step "7" "Deploying Database"
+    Write-Step "8" "Deploying Database"
     $deployedDb = Invoke-DatabaseDeployment -Server $server -Database $database -Name $DatabaseName -CreateIfNotExists $CreateDatabaseIfNotExists
-    
-    if ($null -eq $deployedDb -and -not $WhatIf) {
-        throw "Deployment failed - database is null"
-    }
-    
-    # Step 8: Update roles (if enabled and database was deployed)
-    if ($UpdateRoles -and $RolesConfigFile -and $deployedDb -and -not $WhatIf) {
-        Write-Step "8" "Updating Role Memberships"
-        Update-RoleMemberships -Database $deployedDb -RolesConfigFile $RolesConfigFile
-    }
-    else {
-        Write-Step "8" "Skipping Role Update"
-    }
-    
-    # Step 9: Process model
-    Write-Step "9" "Processing Model"
+
+    Write-Step "9" "Processing Database"
     if ($deployedDb) {
         Invoke-ProcessModel -Database $deployedDb -ProcessType $ProcessType
     }
     else {
-        Write-Log "Skipping processing (WhatIf mode or deployment failed)" -Level "WARNING"
+        Write-Log "Skipping processing in WHATIF mode." -Level "WARNING"
     }
 }
 finally {
-    # Cleanup: Disconnect from server
     if ($server -and $server.Connected) {
         $server.Disconnect()
         Write-Log "Disconnected from SSAS server" -Level "INFO"
     }
 }
-
-# ============================================================
-# FINAL RESULTS
-# ============================================================
 
 $script:DeploymentEndTime = Get-Date
 $duration = $script:DeploymentEndTime - $script:DeploymentStartTime
@@ -608,16 +483,16 @@ $duration = $script:DeploymentEndTime - $script:DeploymentStartTime
 Write-Section "Deployment Results"
 
 if ($WhatIf) {
-    Write-Log "WHATIF MODE: No actual changes were made" -Level "WARNING"
+    Write-Log "WHATIF MODE: No actual deployment changes were made" -Level "WARNING"
 }
 
 if ($script:Errors.Count -gt 0) {
     Write-Log "Deployment FAILED with $($script:Errors.Count) error(s)" -Level "ERROR"
-    
+
     Write-Host ""
     Write-Host "ERRORS:" -ForegroundColor $Colors.Red
     $script:Errors | ForEach-Object { Write-Host "  - $_" -ForegroundColor $Colors.Red }
-    
+
     exit 1
 }
 
@@ -625,8 +500,10 @@ Write-Log "Deployment completed successfully!" -Level "SUCCESS"
 
 Write-Host ""
 Write-Host "Summary:" -ForegroundColor $Colors.Green
+Write-Host "  Environment: $Environment" -ForegroundColor $Colors.Green
 Write-Host "  Server: $SsasServer" -ForegroundColor $Colors.Green
 Write-Host "  Database: $DatabaseName" -ForegroundColor $Colors.Green
+Write-Host "  Working BIM: $script:WorkingBimPath" -ForegroundColor $Colors.Green
 Write-Host "  Process Type: $ProcessType" -ForegroundColor $Colors.Green
 Write-Host "  Duration: $($duration.ToString('mm\:ss'))" -ForegroundColor $Colors.Green
 
@@ -646,4 +523,3 @@ Write-Host ""
 Write-Host "Deployment finished at: $script:DeploymentEndTime" -ForegroundColor $Colors.Cyan
 
 exit 0
-
